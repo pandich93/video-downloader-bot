@@ -1,0 +1,15 @@
+.env
+venv/
+.venv/
+__pycache__/
+*.pyc
+downloads/
+tmp/
+*.mp4
+*.mov
+*.webm
+*.mkv
+*.part
+cookies*.txt
+*.log
+.DS_Store
