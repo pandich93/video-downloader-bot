@@ -34,7 +34,7 @@ def _flag(name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class Settings:
     bot_token: str
-    allowed_user_ids: frozenset[int]  # пусто — бот открыт для всех
+    allowed_user_ids: frozenset[int]  # кому можно, кроме админа; пусто — только админ
     cookies_file: str | None
     download_dir: Path
     max_file_mb: int
@@ -52,10 +52,11 @@ class Settings:
     daily_limit: int = 20             # задач в сутки на пользователя (0 — без лимита; админу — всегда без)
     public_max_file_mb: int = 500     # своё видео файлом для обычных пользователей (админу — до 2 ГБ)
     notify_new_users: bool = True     # сообщать админу о новых пользователях
+    public_mode: bool = False         # PUBLIC_MODE=true — бот открыт для всех
 
     @property
     def is_public(self) -> bool:
-        return not self.allowed_user_ids
+        return self.public_mode
     base_dir: Path = BASE_DIR
 
     @property
@@ -108,8 +109,11 @@ def load_settings() -> Settings:
     if not token:
         raise SystemExit("BOT_TOKEN не задан в .env")
 
-    # Пустой ALLOWED_USER_IDS — бот открыт для всех; со списком — только для этих пользователей
+    # По умолчанию бот приватный: админ и ALLOWED_USER_IDS. Открыть для всех — только явно, PUBLIC_MODE=true
+    public_mode = _flag("PUBLIC_MODE", False)
     id_list = _ids("ALLOWED_USER_IDS")
+    if public_mode and id_list:
+        log.warning("PUBLIC_MODE=true — ALLOWED_USER_IDS не ограничивает доступ, бот открыт для всех")
     ids = frozenset(id_list)
     admin_raw = os.getenv("ADMIN_ID", "").strip()
     if not admin_raw and not id_list:
@@ -155,4 +159,5 @@ def load_settings() -> Settings:
         daily_limit=int(os.getenv("DAILY_LIMIT", "20").strip() or 0),
         public_max_file_mb=int(os.getenv("PUBLIC_MAX_FILE_MB", "500").strip() or 500),
         notify_new_users=_flag("NOTIFY_NEW_USERS", True),
+        public_mode=public_mode,
     )

@@ -78,8 +78,12 @@ async def main() -> None:
     dp.include_routers(editor_router, router, callbacks_router)
 
     await bot.delete_webhook(drop_pending_updates=True)
-    mode = ("открыт для всех" if settings.is_public
-            else f"только для {sorted(settings.allowed_user_ids)}")
+    if settings.is_public:
+        mode = "открыт для всех (PUBLIC_MODE=true)"
+    elif settings.allowed_user_ids:
+        mode = f"приватный: админ и {sorted(settings.allowed_user_ids)}"
+    else:
+        mode = "приватный: только админ (открыть для всех — PUBLIC_MODE=true в .env)"
     logging.info("Бот запущен: %s, админ %s, лимит %s задач/сутки", mode, settings.admin_id,
                  settings.daily_limit or "∞")
     logging.info("Прокси: %s", mask_proxy(settings.proxy) if settings.proxy else "не задан")

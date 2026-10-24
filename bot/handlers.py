@@ -186,7 +186,7 @@ async def cmd_stats(message: Message, settings: Settings, users: Users) -> None:
         return
     st = users.stats()
     top = "\n".join(f"  • {name or uid} ({uid}) — {n}" for uid, name, n in st.top_today) or "  —"
-    mode = "открыт для всех" if settings.is_public else f"белый список ({len(settings.allowed_user_ids)})"
+    mode = "открыт для всех" if settings.is_public else f"приватный (в списке {len(settings.allowed_user_ids)})"
     await message.answer(
         f"📊 Статистика\n\n"
         f"Режим: {mode}, лимит {settings.daily_limit or '∞'}/сутки\n"
