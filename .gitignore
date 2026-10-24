@@ -19,3 +19,5 @@ cookies*.txt
 # SQLite: кэш видео и данные пользователей — не для git
 cache.db
 cache.db-journal
+# Настройки PyCharm — у каждого свои (пути к интерпретатору и т. п.)
+.idea/
