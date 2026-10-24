@@ -12,6 +12,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 - MIT license, contributing guide, code of conduct, security policy, issue and PR templates.
 
 ### Changed
+- **Breaking:** the bot is private by default. An empty `ALLOWED_USER_IDS` now means "only the admin";
+  to open the bot to everyone, set `PUBLIC_MODE=true`.
 - `.idea/` is no longer tracked; `.dockerignore` keeps the MTProto session, cookies, the cache
   database and logs out of Docker images.
 - `.env.example` no longer contains a real nickname.

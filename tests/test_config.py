@@ -1,11 +1,13 @@
-"""Разбор прокси, цвета и настроек из .env."""
+"""Разбор прокси, цвета и настроек из .env, режим доступа."""
 from pathlib import Path
 
 import pytest
 from dotenv import dotenv_values
 
 import bot.config as config
+from bot.access import AccessMiddleware
 from bot.config import _color, load_settings, mask_proxy, normalize_proxy
+from bot.users import Users
 
 ENV_EXAMPLE = Path(__file__).resolve().parent.parent / ".env.example"
 
@@ -50,6 +52,7 @@ def test_env_example_copied_as_is_is_safe(env, tmp_path):
     settings = load_settings()
     assert settings.download_dir != tmp_path
     assert settings.download_dir.is_relative_to(tmp_path)
+    assert not settings.is_public          # копия примера не открывает бота для всех
 
 
 @pytest.mark.parametrize("value", [".", "./", "..", "{root}", "{parent}"])
@@ -98,3 +101,45 @@ def test_mask_proxy_hides_credentials():
 ])
 def test_color(raw, expected):
     assert _color(raw) == expected
+
+
+def _access(settings, tmp_path) -> AccessMiddleware:
+    users = Users(tmp_path / "cache.db", settings.admin_id, settings.daily_limit, settings.blocked_user_ids)
+    return AccessMiddleware(settings, users, notifier=None)
+
+
+def test_private_by_default_only_admin(env, tmp_path):
+    settings = load_settings()
+    assert not settings.is_public
+    access = _access(settings, tmp_path)
+    assert access._allowed(1)              # ADMIN_ID из фикстуры
+    assert not access._allowed(999)
+
+
+def test_allowed_ids_are_added_to_admin(env, tmp_path):
+    env.setenv("ALLOWED_USER_IDS", "5, 6")
+    access = _access(load_settings(), tmp_path)
+    assert access._allowed(1) and access._allowed(5) and access._allowed(6)
+    assert not access._allowed(999)
+
+
+@pytest.mark.parametrize("flag", ["true", "1", "yes", "on", "TRUE"])
+def test_public_mode_opens_bot_for_everyone(env, tmp_path, flag):
+    env.setenv("PUBLIC_MODE", flag)
+    settings = load_settings()
+    assert settings.is_public
+    assert _access(settings, tmp_path)._allowed(999)
+
+
+@pytest.mark.parametrize("flag", ["false", "0", "no", ""])
+def test_public_mode_off_values(env, tmp_path, flag):
+    env.setenv("PUBLIC_MODE", flag)
+    assert not load_settings().is_public
+
+
+def test_public_mode_still_respects_bans(env, tmp_path):
+    env.setenv("PUBLIC_MODE", "true")
+    env.setenv("BLOCKED_USER_IDS", "999")
+    access = _access(load_settings(), tmp_path)
+    assert not access._allowed(999)
+    assert access._allowed(1000)

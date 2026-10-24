@@ -35,7 +35,8 @@ into ready-to-post **9:16 clips for TikTok, Reels and Shorts** — with FFmpeg, 
   - trimming (`0:05-0:40`), speed 1×/1.05×/1.1×, metadata removal, a slight random variation per export;
   - **📦 All 3** — one source, three files; hardware encoding on Intel Quick Sync with CPU fallback.
 - **Files up to 2 GB** through MTProto (Telethon) instead of the Bot API's 20/50 MB.
-- **Public or private.** Whitelist or open mode, daily limits, one job at a time, `/ban`, `/stats`,
+- **Private by default, public on demand.** Only you (and a list of friends) until you set `PUBLIC_MODE=true`;
+  daily limits, one job at a time, `/ban`, `/stats`,
   a queue that shows each user their position.
 - **Runs unattended.** Daily yt-dlp updates, restart on `.env` change or `/restart`, errors are sent to the
   admin in Telegram. Autostart on Windows (Task Scheduler) and macOS (launchd), or Docker.
@@ -83,7 +84,8 @@ All settings live in `.env` (see [.env.example](.env.example)). Changing `.env` 
 |---|---|---|
 | `BOT_TOKEN` | — | Token from @BotFather (required) |
 | `ADMIN_ID` | first of `ALLOWED_USER_IDS` | Your Telegram ID: admin commands, notifications, no limits |
-| `ALLOWED_USER_IDS` | empty = open to everyone | Comma-separated whitelist |
+| `ALLOWED_USER_IDS` | empty = only the admin | Comma-separated IDs allowed besides the admin |
+| `PUBLIC_MODE` | `false` | `true` opens the bot to everyone (bans still apply) |
 | `DAILY_LIMIT` | `20` | Jobs per user per day, `0` = unlimited |
 | `PUBLIC_MAX_FILE_MB` | `500` | Max uploaded file for regular users (needs MTProto) |
 | `BLOCKED_USER_IDS` | — | Comma-separated bans (also `/ban id`) |
@@ -120,8 +122,9 @@ and set `COOKIES_FILE=cookies.txt`. The file is your session — keep it private
 
 **A site stopped working.** Update yt-dlp: `pip install -U "yt-dlp[default]"` (the bot also does it daily).
 
-**Can I run it for other people?** Yes — leave `ALLOWED_USER_IDS` empty. Mind your home IP (YouTube may
-rate-limit it), the queue on a laptop, and the legal note below.
+**Can I run it for other people?** Yes. The bot is private by default: add friends to `ALLOWED_USER_IDS`,
+or set `PUBLIC_MODE=true` to open it to everyone. Mind your home IP (YouTube may rate-limit it), the queue
+on a laptop, and the legal note below.
 
 ## Development
 
