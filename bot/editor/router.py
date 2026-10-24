@@ -14,7 +14,8 @@ from bot import mtproto
 from bot.cache import VideoCache
 from bot.config import Settings
 from bot.downloader import DownloadFailed
-from bot.editor.ffmpeg import PROJECT_DIR, EditFailed, RenderResult, make_thumbnail, render
+from bot.editor.ffmpeg import (PROJECT_DIR, EditFailed, RenderResult, make_thumbnail,
+                               random_variations, render)
 from bot.editor.keyboards import (AUTHORED_HOOK_PROMPT, EXPIRED_TEXT, FILE_HINT, FRAGMENT_PROMPT,
                                   HOOK_PROMPT, MENU_TEXT, SETTINGS_TEXT, EditCb, cancel_kb,
                                   done_text, menu_kb, result_caption, settings_kb)
@@ -293,6 +294,9 @@ async def _run(bot: Bot, status: Message, user_id: int, s: EditSession, settings
                         await _edit(status, "⏳ Скачиваю исходник…")
                         s.video = await fetch(bot, s.source, settings, cache, dl_progress)
 
+                # вариации пакета выбираются заранее — так файлы гарантированно отличаются друг от друга
+                variations = (random_variations(len(platforms), s.options.variation)
+                              if s.options.variation != "off" else [None] * len(platforms))
                 for i, pid in enumerate(platforms):
                     opts = preset(s.options, pid)
                     label = opts.platform_name + (f" ({i + 1}/{len(platforms)})" if len(platforms) > 1 else "")
@@ -307,7 +311,8 @@ async def _run(bot: Bot, status: Message, user_id: int, s: EditSession, settings
                         await _edit(status, f"🎬 Обрабатываю {label}…")
                         result = await render(s.video.path, s.video.workdir, opts, output_limit, progress,
                                               encoder_pref=settings.video_encoder, logo=LOGO_PATH,
-                                              brand_color=settings.brand_color, nick=settings.nick)
+                                              brand_color=settings.brand_color, nick=settings.nick,
+                                              variation=variations[i])
                     try:
                         await _edit(status, f"📤 Отправляю {label}…")
                         await _send(bot, status, s, result, opts, settings)

@@ -83,6 +83,8 @@ class Variation:
     brightness: float
     contrast: float
     saturation: float
+    level: str = "medium"
+    seed: int = 0       # по seed (и номеру файла в пакете) вариацию можно повторить для разбора ошибки
 
 
 @dataclass(frozen=True)
@@ -244,16 +246,39 @@ def make_plan(p: Probe, o: EditOptions, max_bytes: int,
     return Plan(frame, out_w, out_h, long_side, o.start, duration, video_kbps, limited, audio, cut)
 
 
-def random_variation(rng: random.Random | None = None) -> Variation:
-    rng = rng or random.Random()
-    return Variation(
-        zoom=round(rng.uniform(1.02, 1.05), 4),
-        x=round(rng.random(), 3),
-        y=round(rng.random(), 3),
-        brightness=round(rng.uniform(-0.03, 0.03), 3),
-        contrast=round(rng.uniform(0.97, 1.04), 3),
-        saturation=round(rng.uniform(0.95, 1.08), 3),
-    )
+# Диапазоны вариации по уровням; «слабая» — примерно вдвое мягче «средней»
+VARIATION_RANGES: dict[str, dict[str, tuple[float, float]]] = {
+    "medium": {"zoom": (1.02, 1.05), "x": (0.0, 1.0), "y": (0.0, 1.0),
+               "brightness": (-0.03, 0.03), "contrast": (0.97, 1.04), "saturation": (0.95, 1.08)},
+    "light": {"zoom": (1.01, 1.025), "x": (0.0, 1.0), "y": (0.0, 1.0),
+              "brightness": (-0.015, 0.015), "contrast": (0.985, 1.02), "saturation": (0.975, 1.04)},
+}
+BAND_PAD = 0.15     # отступ от краёв полосы — у соседних файлов пакета значения не сливаются
+
+
+def random_variations(n: int, level: str = "medium", seed: int | None = None) -> list[Variation]:
+    """n вариаций, заметно отличающихся друг от друга.
+
+    Диапазон каждого параметра делится на n полос, каждому файлу достаётся своя полоса
+    (в случайном порядке). Для одного файла — просто случайное значение из всего диапазона.
+    """
+    ranges = VARIATION_RANGES[level]
+    seed = secrets.randbits(32) if seed is None else seed
+    rng = random.Random(seed)
+    pad = BAND_PAD if n > 1 else 0.0
+    bands = {k: rng.sample(range(n), n) for k in ranges}
+    result = []
+    for i in range(n):
+        values = {}
+        for k, (lo, hi) in ranges.items():
+            u = (bands[k][i] + rng.uniform(pad, 1 - pad)) / n
+            values[k] = round(lo + (hi - lo) * u, 4 if k == "zoom" else 3)
+        result.append(Variation(**values, level=level, seed=seed))
+    return result
+
+
+def random_variation(level: str = "medium", seed: int | None = None) -> Variation:
+    return random_variations(1, level, seed)[0]
 
 
 @dataclass(frozen=True)
@@ -300,9 +325,10 @@ def build_filter(p: Probe, o: EditOptions, plan: Plan, var: Variation | None, *,
             f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2{color}[base]"
         )
     else:
-        M = plan.box
-        graph = (f"{head}scale='min(iw,{M})':'min(ih,{M})':"
-                 f"force_original_aspect_ratio=decrease:force_divisible_by=2{color}[base]")
+        # ровно размер из плана: после зума вариации кадр не мельчает, а оверлеи
+        # (хук, ник, логотип) рассчитаны под этот размер. Пропорции те же — кроп их сохраняет
+        # с точностью до пары пикселей округления
+        graph = f"{head}scale={W}:{H}{color}[base]"
 
     cur, idx = "base", 1
     if ov.logo:
@@ -450,13 +476,16 @@ def _overlays(o: EditOptions, plan: Plan, workdir: Path, logo: Path | None, nick
 async def render(src: Path, workdir: Path, o: EditOptions, max_bytes: int,
                  on_progress: ProgressCb | None = None, *, encoder_pref: str = "auto",
                  logo: Path | None = None, brand_color: str = "FFFFFF",
-                 nick: str = "") -> RenderResult:
-    """Обрабатывает видео и гарантирует размер результата не больше max_bytes."""
+                 nick: str = "", variation: Variation | None = None) -> RenderResult:
+    """Обрабатывает видео и гарантирует размер результата не больше max_bytes.
+
+    variation — заранее выбранная вариация (пакет из нескольких файлов); без неё — случайная.
+    """
     src, workdir = src.resolve(), workdir.resolve()   # FFmpeg запускается из workdir
     if logo:
         logo = logo.resolve()
     p = await probe(src)
-    var = random_variation() if o.variation else None
+    var = None if o.variation == "off" else (variation or random_variation(o.variation))
     if o.logo and not (logo and logo.is_file()):
         raise EditFailed("🖼 Логотип не найден: положите PNG в папку assets под именем logo.png.")
     encoder = await pick_encoder(encoder_pref)
