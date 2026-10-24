@@ -1,5 +1,20 @@
 .env
 .venv/
+venv/
 __pycache__/
+*.pyc
 downloads/
+tmp/
+logs/
+*.log
 .git/
+.idea/
+# Секреты: сессия MTProto (доступ от имени бота) и cookies браузера — монтируйте через -v
+*.session
+*.session-journal
+cookies*.txt
+# Данные пользователей и служебные файлы
+cache.db
+cache.db-journal
+.requirements.sha
+restart.flag
