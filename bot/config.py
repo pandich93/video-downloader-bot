@@ -125,7 +125,9 @@ def load_settings() -> Settings:
             log.warning("COOKIES_FILE=%s не найден — работаем без cookies", cookies)
             cookies = None
 
-    download_dir = _path(os.getenv("DOWNLOAD_DIR", "downloads"))
+    # Пустое значение — по умолчанию: иначе папкой загрузок стал бы корень проекта,
+    # а её содержимое удаляется при каждом запуске
+    download_dir = _path(os.getenv("DOWNLOAD_DIR", "").strip() or "downloads")
     download_dir.mkdir(parents=True, exist_ok=True)
 
     return Settings(
@@ -133,7 +135,7 @@ def load_settings() -> Settings:
         allowed_user_ids=ids,
         cookies_file=cookies,
         download_dir=download_dir,
-        max_file_mb=int(os.getenv("MAX_FILE_MB", "50")),
+        max_file_mb=int(os.getenv("MAX_FILE_MB", "").strip() or 50),
         # Прокси для заблокированных сайтов (например, TikTok в Узбекистане)
         proxy=normalize_proxy(os.getenv("PROXY", ""),
                               os.getenv("PROXY_TYPE", "http").strip() or "http"),
