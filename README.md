@@ -32,8 +32,10 @@ into ready-to-post **9:16 clips for TikTok, Reels and Shorts** — with FFmpeg, 
     sources, blurred background for horizontal ones, H.264 + AAC, loudness around −14 LUFS;
   - three styling levels: 🟢 clean · 🟡 styled (color look, logo, fade-in) · 🟣 authored (text hook for the
     first 3 seconds, your nickname, a progress bar in your brand color);
-  - trimming (`0:05-0:40`), speed 1×/1.05×/1.1×, metadata removal, a slight random variation per export;
-  - **📦 All 3** — one source, three files; hardware encoding on Intel Quick Sync with CPU fallback.
+  - trimming (`0:05-0:40`), speed 1×/1.05×/1.1×, metadata removal, a slight random variation per export
+    (zoom and color; medium, light or off);
+  - **📦 All 3** — one source, three files with guaranteed different variations; hardware encoding on
+    Intel Quick Sync with CPU fallback.
 - **Files up to 2 GB** through MTProto (Telethon) instead of the Bot API's 20/50 MB.
 - **Private by default, public on demand.** Only you (and a list of friends) until you set `PUBLIC_MODE=true`;
   daily limits, one job at a time, `/ban`, `/stats`,

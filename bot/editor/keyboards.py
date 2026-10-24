@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot.editor.ffmpeg import RenderResult
-from bot.editor.options import (AUDIOS, FRAMES, HOOK_SECONDS, LEVELS, PLATFORMS, STYLES,
+from bot.editor.options import (AUDIOS, FRAMES, HOOK_SECONDS, LEVELS, PLATFORMS, STYLES, VARIATIONS,
                                 EditOptions, fmt_duration)
 from bot.editor.sessions import EditSession
 from bot.keyboards import VideoAction
@@ -32,7 +32,8 @@ SETTINGS_TEXT = (
     f"• Хук — крупный текст на первые {HOOK_SECONDS} секунды, *слово* в звёздочках — жёлтым.\n"
     "• Ник — NICK из .env, сверху слева. Прогресс — полоса цвета BRAND_COLOR внизу.\n"
     "• Логотип — файл assets/logo.png в папке бота, правый верхний угол.\n"
-    "• Вариация: лёгкий случайный зум и цвет — каждый экспорт немного отличается."
+    "• Вариация: лёгкий случайный зум и цвет — каждый экспорт немного отличается; "
+    "«слабая» — вдвое мягче, файлы пакета «Все 3» всегда разные."
 )
 FRAGMENT_PROMPT = (
     "✂️ Пришлите фрагмент сообщением:\n"
@@ -93,7 +94,7 @@ def settings_kb(s: EditSession) -> InlineKeyboardMarkup:
         ("toggle", "nick", f"Ник: {'вкл' if o.nick else 'выкл'}"),
         ("toggle", "progress", f"Полоса прогресса: {'вкл' if o.progress else 'выкл'}"),
         ("toggle", "speed", f"Скорость: {o.speed:g}×"),
-        ("toggle", "var", f"Вариация: {'вкл' if o.variation else 'выкл'}"),
+        ("toggle", "var", f"Вариация: {VARIATIONS[o.variation]}"),
         ("toggle", "audio", f"Звук: {AUDIOS[o.audio]}"),
     ]
     kb = InlineKeyboardBuilder()
@@ -141,7 +142,8 @@ def changes_summary(r: RenderResult, o: EditOptions) -> str:
     if o.fade_in:
         items.append("мягкое появление")
     if var:
-        items.append(f"зум {_pct((var.zoom - 1) * 100)}, яркость {_pct(var.brightness * 100)}, "
+        items.append(f"вариация ({VARIATIONS[var.level]}): зум {_pct((var.zoom - 1) * 100)}, "
+                     f"яркость {_pct(var.brightness * 100)}, "
                      f"контраст {_pct((var.contrast - 1) * 100)}, "
                      f"насыщенность {_pct((var.saturation - 1) * 100)}")
     if plan and not plan.audio:

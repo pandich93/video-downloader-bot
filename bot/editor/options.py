@@ -16,6 +16,11 @@ FRAMES = {
     "original": "как в оригинале",
 }
 SPEEDS = (1.0, 1.05, 1.1)
+VARIATIONS = {
+    "medium": "средняя",
+    "light": "слабая",
+    "off": "выкл",
+}
 AUDIOS = {
     "norm": "выровнять громкость",
     "orig": "как есть",
@@ -43,7 +48,7 @@ class EditOptions:
     start: float = 0.0          # фрагмент: начало, секунды
     end: float | None = None    # фрагмент: конец (None — до конца видео)
     speed: float = 1.0
-    variation: bool = True      # лёгкий случайный зум и цвет: каждый экспорт немного другой
+    variation: str = "medium"   # лёгкий случайный зум и цвет: каждый экспорт немного другой
     audio: str = "norm"
     hook: str = ""              # текст поверх первых секунд
     logo: bool = False          # свой логотип из assets/logo.png
@@ -90,7 +95,7 @@ def toggle(opts: EditOptions, field: str) -> EditOptions:
     if field == "speed":
         return replace(opts, speed=_next(SPEEDS, opts.speed))
     if field == "var":
-        return replace(opts, variation=not opts.variation)
+        return replace(opts, variation=_next(VARIATIONS, opts.variation))
     if field == "audio":
         return replace(opts, audio=_next(AUDIOS, opts.audio))
     if field == "logo":
