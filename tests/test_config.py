@@ -1,7 +1,55 @@
-"""Разбор прокси и цвета из .env."""
-import pytest
+"""Разбор прокси, цвета и настроек из .env."""
+from pathlib import Path
 
-from bot.config import _color, mask_proxy, normalize_proxy
+import pytest
+from dotenv import dotenv_values
+
+import bot.config as config
+from bot.config import _color, load_settings, mask_proxy, normalize_proxy
+
+ENV_EXAMPLE = Path(__file__).resolve().parent.parent / ".env.example"
+
+
+@pytest.fixture
+def env(monkeypatch, tmp_path):
+    """load_settings без настоящего .env: только переменные теста, папки — во временном каталоге."""
+    monkeypatch.setattr(config, "load_dotenv", lambda *args, **kwargs: None)
+    monkeypatch.setattr(config, "BASE_DIR", tmp_path)
+    for name in dotenv_values(ENV_EXAMPLE):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("BOT_TOKEN", "123:test")
+    monkeypatch.setenv("ADMIN_ID", "1")
+    return monkeypatch
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_empty_download_dir_and_size_use_defaults(env, tmp_path, value):
+    if value is not None:
+        env.setenv("DOWNLOAD_DIR", value)
+        env.setenv("MAX_FILE_MB", value)
+    settings = load_settings()
+    # пустой DOWNLOAD_DIR не должен превращаться в корень проекта — его бот очищает при запуске
+    assert settings.download_dir == tmp_path / "downloads"
+    assert settings.max_file_mb == 50
+
+
+def test_explicit_download_dir_and_size(env, tmp_path):
+    env.setenv("DOWNLOAD_DIR", "tmpdl")
+    env.setenv("MAX_FILE_MB", " 20 ")
+    settings = load_settings()
+    assert settings.download_dir == tmp_path / "tmpdl"
+    assert settings.download_dir.is_dir()
+    assert settings.max_file_mb == 20
+
+
+def test_env_example_copied_as_is_is_safe(env, tmp_path):
+    """Первый запуск: .env.example скопирован без правок, вписаны только токен и ID."""
+    for name, value in dotenv_values(ENV_EXAMPLE).items():
+        if name not in ("BOT_TOKEN", "ADMIN_ID"):
+            env.setenv(name, value or "")
+    settings = load_settings()
+    assert settings.download_dir != tmp_path
+    assert settings.download_dir.is_relative_to(tmp_path)
 
 
 @pytest.mark.parametrize("raw, scheme, expected", [
