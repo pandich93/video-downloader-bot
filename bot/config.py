@@ -19,6 +19,14 @@ def _path(value: str) -> Path:
     return p if p.is_absolute() else BASE_DIR / p
 
 
+def _ids(name: str) -> list[int]:
+    raw = os.getenv(name, "").replace(" ", "")
+    try:
+        return [int(x) for x in raw.split(",") if x]
+    except ValueError:
+        raise SystemExit(f"{name}: ожидаются числовые Telegram ID через запятую") from None
+
+
 def _flag(name: str, default: bool) -> bool:
     return os.getenv(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
 
@@ -26,7 +34,7 @@ def _flag(name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class Settings:
     bot_token: str
-    allowed_user_ids: frozenset[int]
+    allowed_user_ids: frozenset[int]  # пусто — бот открыт для всех
     cookies_file: str | None
     download_dir: Path
     max_file_mb: int
@@ -35,6 +43,19 @@ class Settings:
     auto_update: bool = True          # автообновление yt-dlp
     update_interval_hours: float = 24
     notify_on_start: bool = True      # сообщать о каждом (пере)запуске
+    api_id: int = 0                   # MTProto для файлов больше 20/50 МБ (my.telegram.org)
+    api_hash: str = ""
+    video_encoder: str = "auto"       # auto | qsv | cpu — кодирование при обработке видео
+    brand_color: str = "FF4D00"       # фирменный цвет (полоса прогресса), RRGGBB
+    nick: str = ""                    # ник на видео (уровень «Авторский»)
+    blocked_user_ids: frozenset[int] = frozenset()
+    daily_limit: int = 20             # задач в сутки на пользователя (0 — без лимита; админу — всегда без)
+    public_max_file_mb: int = 500     # своё видео файлом для обычных пользователей (админу — до 2 ГБ)
+    notify_new_users: bool = True     # сообщать админу о новых пользователях
+
+    @property
+    def is_public(self) -> bool:
+        return not self.allowed_user_ids
     base_dir: Path = BASE_DIR
 
     @property
@@ -62,6 +83,16 @@ def normalize_proxy(raw: str, scheme: str = "http") -> str | None:
                      "или http://user:pass@host:port")
 
 
+def _color(value: str) -> str:
+    """#FF4D00 / FF4D00 → FF4D00; пусто или ошибка — оранжевый по умолчанию."""
+    v = value.strip().lstrip("#").upper()
+    if len(v) == 6 and all(c in "0123456789ABCDEF" for c in v):
+        return v
+    if v:
+        log.warning("BRAND_COLOR=%s — ожидается цвет вида #FF4D00, беру оранжевый", value)
+    return "FF4D00"
+
+
 def mask_proxy(proxy: str) -> str:
     """Скрывает логин и пароль для логов."""
     if "@" not in proxy:
@@ -77,11 +108,14 @@ def load_settings() -> Settings:
     if not token:
         raise SystemExit("BOT_TOKEN не задан в .env")
 
-    raw_ids = os.getenv("ALLOWED_USER_IDS", "").replace(" ", "")
-    id_list = [int(x) for x in raw_ids.split(",") if x]
+    # Пустой ALLOWED_USER_IDS — бот открыт для всех; со списком — только для этих пользователей
+    id_list = _ids("ALLOWED_USER_IDS")
     ids = frozenset(id_list)
-    if not ids:
-        raise SystemExit("ALLOWED_USER_IDS пуст — укажите свой Telegram ID")
+    admin_raw = os.getenv("ADMIN_ID", "").strip()
+    if not admin_raw and not id_list:
+        raise SystemExit("ADMIN_ID не задан в .env — укажите свой Telegram ID (узнать: @userinfobot)")
+    # По умолчанию администратор — первый ID из ALLOWED_USER_IDS
+    admin_id = int(admin_raw) if admin_raw else id_list[0]
 
     # cookies нужны для Instagram и иногда для YouTube ("подтвердите, что вы не бот")
     cookies = os.getenv("COOKIES_FILE", "").strip() or None
@@ -103,9 +137,17 @@ def load_settings() -> Settings:
         # Прокси для заблокированных сайтов (например, TikTok в Узбекистане)
         proxy=normalize_proxy(os.getenv("PROXY", ""),
                               os.getenv("PROXY_TYPE", "http").strip() or "http"),
-        # По умолчанию администратор — первый ID из ALLOWED_USER_IDS
-        admin_id=int(os.getenv("ADMIN_ID", "").strip() or id_list[0]),
+        admin_id=admin_id,
         auto_update=_flag("AUTO_UPDATE", True),
         update_interval_hours=float(os.getenv("UPDATE_INTERVAL_HOURS", "24")),
         notify_on_start=_flag("NOTIFY_ON_START", True),
+        api_id=int(os.getenv("API_ID", "").strip() or 0),
+        api_hash=os.getenv("API_HASH", "").strip(),
+        video_encoder=(os.getenv("VIDEO_ENCODER", "auto").strip().lower() or "auto"),
+        brand_color=_color(os.getenv("BRAND_COLOR", "")),
+        nick=os.getenv("NICK", "").strip()[:40],
+        blocked_user_ids=frozenset(_ids("BLOCKED_USER_IDS")),
+        daily_limit=int(os.getenv("DAILY_LIMIT", "20").strip() or 0),
+        public_max_file_mb=int(os.getenv("PUBLIC_MAX_FILE_MB", "500").strip() or 500),
+        notify_new_users=_flag("NOTIFY_NEW_USERS", True),
     )

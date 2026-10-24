@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
+import subprocess
 import sys
+from pathlib import Path
 from typing import Callable
 
 import yt_dlp
@@ -27,11 +30,48 @@ async def _installed_version() -> str:
     return out.splitlines()[-1] if out else ""
 
 
+# Код выхода «перезапусти меня» для обёртки deploy/windows/run.ps1
+RESTART_EXIT_CODE = 75
+
+
 async def restart(notifier: Notifier) -> None:
-    """Перезапуск процесса на месте — работает и под launchd, и при ручном запуске."""
+    """Перезапуск процесса.
+
+    macOS / Linux: os.execv заменяет процесс на месте (работает и под launchd, и вручную).
+    Windows: там os.execv не заменяет процесс, а запускает новый рядом. Поэтому под
+    автозапуском (BOT_SUPERVISED=1) просто выходим с кодом 75 — обёртка поднимет бота сама.
+    """
     await notifier.bot.session.close()
     logging.shutdown()
+    if sys.platform == "win32":
+        if os.environ.get("BOT_SUPERVISED") == "1":
+            os._exit(RESTART_EXIT_CODE)
+        # Ручной запуск: новый процесс продолжит работу в этом же окне
+        subprocess.Popen([sys.executable, *sys.argv])
+        os._exit(0)
     os.execv(sys.executable, [sys.executable, *sys.argv])
+
+
+async def ensure_requirements(base_dir: Path) -> None:
+    """При запуске ставит пакеты из requirements.txt, если файл изменился с прошлой установки.
+
+    Так обновление кода с новыми зависимостями не требует ручного pip install.
+    """
+    req = base_dir / "requirements.txt"
+    stamp = base_dir / ".requirements.sha"
+    if not req.is_file():
+        return
+    digest = hashlib.sha256(req.read_bytes()).hexdigest()
+    if stamp.is_file() and stamp.read_text().strip() == digest:
+        return
+    log.info("requirements.txt изменился — устанавливаю зависимости…")
+    code, out = await _run(sys.executable, "-m", "pip", "install", "-q",
+                           "--disable-pip-version-check", "-r", str(req))
+    if code != 0:
+        log.warning("Не удалось установить зависимости: %s", out[-800:])
+        return
+    stamp.write_text(digest)
+    log.info("Зависимости установлены")
 
 
 async def check_and_update(notifier: Notifier, is_busy: Callable[[], bool]) -> None:

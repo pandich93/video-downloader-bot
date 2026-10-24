@@ -1,7 +1,7 @@
 """Обработчики сообщений бота."""
 from __future__ import annotations
 
-import asyncio
+import contextlib
 import logging
 import re
 from urllib.parse import urlparse
@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from aiogram import Router, F
 from aiogram.enums import ChatAction
 from aiogram.exceptions import TelegramAPIError
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import FSInputFile, Message
 
 from bot.cache import VideoCache
@@ -18,7 +18,9 @@ from bot.downloader import DownloadFailed, VideoFile, download_video
 from bot.keyboards import CHOOSE_TEXT, choose_kb
 from bot.link_store import links
 from bot.notify import Notifier
+from bot.slots import SlotQueue
 from bot.tiktok import URL_UPLOAD_LIMIT, download_tiktok_file, get_tiktok_info
+from bot.users import LimitError, Users
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -26,13 +28,29 @@ router = Router()
 URL_RE = re.compile(r"https?://\S+")
 SUPPORTED_DOMAINS = ("youtube.com", "youtu.be", "tiktok.com", "instagram.com")
 
-# Не больше 2 загрузок одновременно, остальные ждут в очереди
-_semaphore = asyncio.Semaphore(2)
-_active_jobs = 0  # сколько ссылок сейчас в работе (для безопасного перезапуска)
+# Не больше 2 загрузок одновременно, остальные ждут в очереди и видят свой номер.
+# Эту же очередь использует модуль обработки (bot/editor).
+download_queue = SlotQueue(2)
+_active_jobs = 0  # сколько задач сейчас в работе (для безопасного перезапуска)
 
 
 def is_busy() -> bool:
     return _active_jobs > 0
+
+
+def queue_text(pos: int, what: str = "скачивание") -> str:
+    return f"🕒 Очередь на {what}: вы {pos}-й. Сообщу, когда начну."
+
+
+@contextlib.asynccontextmanager
+async def job_slot():
+    """Учитывает задачу в is_busy(): перезапуск бота дождётся её окончания."""
+    global _active_jobs
+    _active_jobs += 1
+    try:
+        yield
+    finally:
+        _active_jobs -= 1
 
 
 def _host(url: str) -> str:
@@ -135,17 +153,80 @@ async def _send_cached(message: Message, cache: VideoCache, key: str) -> bool:
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message) -> None:
+async def cmd_start(message: Message, settings: Settings, users: Users) -> None:
+    uid = message.from_user.id
+    left = users.left_today(uid)
+    if left is None:
+        limits = "• Лимитов нет."
+    else:
+        limits = (f"• До {settings.daily_limit} задач в сутки (сегодня осталось {left}), "
+                  "одна задача за раз.")
+    text = (
+        "👋 Привет! Я скачиваю видео и готовлю их к публикации в TikTok, Reels и Shorts.\n\n"
+        "📥 Пришлите ссылку на YouTube, TikTok или Instagram — скачаю оригинал или обработаю.\n"
+        "✂️ Своё видео пришлите файлом — сразу открою обработку: формат 9:16, текст-хук, "
+        "логотип, очистка метаданных.\n\n"
+        f"{limits}\n"
+        "• Обрабатывайте только видео, на которые у вас есть права.\n\n"
+        "💡 Отправляйте видео именно файлом: «медиа» Telegram сжимает ещё на телефоне.\n"
+        "iPhone: 📎 → Файл → Фото или видео. ПК: перетащите файл и выключите «Сжать»."
+    )
+    if users.is_admin(uid):
+        text += "\n\n🛠 Админ: /stats, /ban id, /unban id, /restart"
+    await message.answer(text)
+
+
+def _admin_only(message: Message, users: Users) -> bool:
+    return users.is_admin(message.from_user.id)
+
+
+@router.message(Command("stats"))
+async def cmd_stats(message: Message, settings: Settings, users: Users) -> None:
+    if not _admin_only(message, users):
+        return
+    st = users.stats()
+    top = "\n".join(f"  • {name or uid} ({uid}) — {n}" for uid, name, n in st.top_today) or "  —"
+    mode = "открыт для всех" if settings.is_public else f"белый список ({len(settings.allowed_user_ids)})"
     await message.answer(
-        "Привет! Пришли ссылку на видео из YouTube, TikTok или Instagram — "
-        "я предложу скачать оригинал или обработать его."
+        f"📊 Статистика\n\n"
+        f"Режим: {mode}, лимит {settings.daily_limit or '∞'}/сутки\n"
+        f"Пользователи: {st.users_total} (новых сегодня {st.users_new_today}, "
+        f"активных сегодня {st.users_active_today}, заблокировано {st.blocked})\n"
+        f"Задачи сегодня: {st.jobs_today} (с ошибкой {st.jobs_failed_today}), всего {st.jobs_total}\n"
+        f"В работе сейчас: {_active_jobs}\n\n"
+        f"Топ за сегодня:\n{top}"
     )
 
 
+async def _set_ban(message: Message, command: CommandObject, users: Users, blocked: bool) -> None:
+    if not _admin_only(message, users):
+        return
+    arg = (command.args or "").strip()
+    if not arg.lstrip("-").isdigit():
+        await message.reply(f"Использование: /{command.command} 123456789")
+        return
+    uid = int(arg)
+    if users.is_admin(uid):
+        await message.reply("Себя заблокировать нельзя 🙂")
+        return
+    users.set_blocked(uid, blocked)
+    await message.reply(("⛔ Заблокирован: " if blocked else "✅ Разблокирован: ") + str(uid))
+
+
+@router.message(Command("ban"))
+async def cmd_ban(message: Message, command: CommandObject, users: Users) -> None:
+    await _set_ban(message, command, users, True)
+
+
+@router.message(Command("unban"))
+async def cmd_unban(message: Message, command: CommandObject, users: Users) -> None:
+    await _set_ban(message, command, users, False)
+
+
 @router.message(Command("restart"))
-async def cmd_restart(message: Message, settings: Settings, notifier: Notifier) -> None:
+async def cmd_restart(message: Message, notifier: Notifier, users: Users) -> None:
     """Перезапуск бота из Telegram — только для администратора."""
-    if message.from_user.id != settings.admin_id:
+    if not users.is_admin(message.from_user.id):
         await message.reply("⛔ Команда только для администратора.")
         return
     from bot.watcher import graceful_restart  # локальный импорт: watcher зависит от updater
@@ -171,47 +252,55 @@ async def on_link(message: Message) -> None:
 
 
 async def run_original(reply_to: Message, status: Message, url: str,
-                       settings: Settings, cache: VideoCache) -> None:
+                       settings: Settings, cache: VideoCache, users: Users, user_id: int) -> None:
     """Скачивает и отправляет оригинал. status — сообщение бота, в котором показываем прогресс."""
     global _active_jobs
     _active_jobs += 1
     try:
-        # Уже отправляли это видео — пересылаем мгновенно, без скачивания
+        # Уже отправляли это видео — пересылаем мгновенно, без скачивания и без списания лимита
         key = cache.key(url)
         if await _send_cached(reply_to, cache, key):
             await status.delete()
             return
-
-        queued = _semaphore.locked()
-        # edit_text без reply_markup заодно убирает кнопки
-        await status.edit_text("🕒 В очереди…" if queued else "⏳ Скачиваю…")
-        async with _semaphore:
-            if queued:  # повторный edit того же текста Telegram отклоняет
-                await status.edit_text("⏳ Скачиваю…")
-
-            if is_tiktok(url) and await _handle_tiktok(reply_to, status, url, settings, cache):
-                await status.delete()
-                return
-
-            video = await download_video(
-                url,
-                max_bytes=settings.max_file_bytes,
-                base_dir=settings.download_dir,
-                cookies=settings.cookies_file,
-                proxy=settings.proxy,
-            )
-        try:
-            await status.edit_text("📤 Отправляю…")
-            sent = await _send_file(reply_to, video)
-            if _file_id(sent):
-                cache.set(key, _file_id(sent), video.title)
-            await status.delete()
-        finally:
-            video.cleanup()
+        with users.job(user_id, "original"):
+            await _download_original(reply_to, status, url, key, settings, cache, users, user_id)
+    except LimitError as e:
+        await status.edit_text(str(e))
     except DownloadFailed as e:
         await status.edit_text(str(e))
     except Exception:
-        log.exception("Ошибка при обработке %s", url)
+        log.exception("Ошибка при обработке %s (пользователь %s)", url, user_id)
         await status.edit_text("💥 Что-то пошло не так. Администратор получил уведомление.")
     finally:
         _active_jobs -= 1
+
+
+async def _download_original(reply_to: Message, status: Message, url: str, key: str,
+                             settings: Settings, cache: VideoCache, users: Users, user_id: int) -> None:
+    async def show(text: str) -> None:
+        with contextlib.suppress(TelegramAPIError):  # в т.ч. «текст не изменился»
+            await status.edit_text(text)  # edit_text без reply_markup заодно убирает кнопки
+
+    async def on_position(pos: int) -> None:
+        await show(queue_text(pos))
+
+    async with download_queue.slot(0 if users.is_admin(user_id) else 1, on_position):
+        await show("⏳ Скачиваю…")
+        if is_tiktok(url) and await _handle_tiktok(reply_to, status, url, settings, cache):
+            await status.delete()
+            return
+        video = await download_video(
+            url,
+            max_bytes=settings.max_file_bytes,
+            base_dir=settings.download_dir,
+            cookies=settings.cookies_file,
+            proxy=settings.proxy,
+        )
+    try:
+        await show("📤 Отправляю…")
+        sent = await _send_file(reply_to, video)
+        if _file_id(sent):
+            cache.set(key, _file_id(sent), video.title)
+        await status.delete()
+    finally:
+        video.cleanup()

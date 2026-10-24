@@ -93,7 +93,8 @@ def _estimate_size(fmt: dict) -> int | None:
     return int(total)
 
 
-def _plan(ydl: yt_dlp.YoutubeDL, info: dict, max_bytes: int) -> list[tuple[int, str, int | None]]:
+def _plan(ydl: yt_dlp.YoutubeDL, info: dict, max_bytes: int,
+          heights: tuple[int, ...] = QUALITY_STEPS) -> list[tuple[int, str, int | None]]:
     """Подбирает форматы по ступеням качества БЕЗ скачивания.
 
     Возвращает [(высота, format_id, оценка_размера)] — только те, что могут влезть в лимит.
@@ -106,7 +107,7 @@ def _plan(ydl: yt_dlp.YoutubeDL, info: dict, max_bytes: int) -> list[tuple[int, 
                                or all(f.get("acodec") == "none" for f in formats)),
     }
     plan, seen = [], set()
-    for h in QUALITY_STEPS:
+    for h in heights:
         selected = list(ydl.build_format_selector(_format_for(h))(ctx))
         if not selected:
             continue
@@ -129,8 +130,8 @@ def _find_file(workdir: Path) -> Path | None:
     return max(files, key=lambda p: p.stat().st_size) if files else None
 
 
-def _download_sync(url: str, workdir: Path, cookies: str | None,
-                   max_bytes: int, proxy: str | None) -> tuple[dict, Path | None]:
+def _download_sync(url: str, workdir: Path, cookies: str | None, max_bytes: int,
+                   proxy: str | None, heights: tuple[int, ...] = QUALITY_STEPS) -> tuple[dict, Path | None]:
     """Блокирующее скачивание (запускается в отдельном потоке).
 
     1. Один раз получаем информацию о видео (без скачивания).
@@ -138,7 +139,7 @@ def _download_sync(url: str, workdir: Path, cookies: str | None,
     3. Скачиваем только его. Если размер неизвестен — пробуем ступени по очереди.
     """
     opts = {
-        "format": _format_for(QUALITY_STEPS[0]),
+        "format": _format_for(heights[0]),
         "outtmpl": str(workdir / "%(id)s.%(ext)s"),
         "merge_output_format": "mp4",
         "noplaylist": True,
@@ -162,7 +163,7 @@ def _download_sync(url: str, workdir: Path, cookies: str | None,
         if not info:
             return {}, None
 
-        plan = _plan(ydl, info, max_bytes) if info.get("formats") else [(0, None, None)]
+        plan = _plan(ydl, info, max_bytes, heights) if info.get("formats") else [(0, None, None)]
         for h, fid, est in plan:
             log.info("Качаем %sp (%s), оценка: %s", h, fid,
                      f"{est / 2**20:.1f} МБ" if est else "неизвестно")
@@ -178,12 +179,14 @@ def _download_sync(url: str, workdir: Path, cookies: str | None,
 
 
 async def download_video(url: str, *, max_bytes: int, base_dir: Path,
-                         cookies: str | None = None, proxy: str | None = None) -> VideoFile:
+                         cookies: str | None = None, proxy: str | None = None,
+                         heights: tuple[int, ...] = QUALITY_STEPS) -> VideoFile:
+    """heights — ступени качества (по умолчанию 720 → 480 → 360; для обработки — с 1080)."""
     workdir = Path(tempfile.mkdtemp(prefix="vid_", dir=base_dir))
     try:
         try:
             info, path = await asyncio.to_thread(
-                _download_sync, url, workdir, cookies, max_bytes, proxy)
+                _download_sync, url, workdir, cookies, max_bytes, proxy, heights)
         except DownloadError as e:
             text = _humanize(e)
             # Неизвестная ошибка — повод для уведомления администратору (ERROR)
@@ -200,7 +203,7 @@ async def download_video(url: str, *, max_bytes: int, base_dir: Path,
                 workdir=workdir,
             )
         mb = max_bytes // (1024 * 1024)
-        raise DownloadFailed(f"📦 Видео больше {mb} МБ даже в 360p — Telegram не даст его отправить.")
+        raise DownloadFailed(f"📦 Видео больше {mb} МБ даже в {heights[-1]}p — Telegram не даст его отправить.")
     except BaseException:
         shutil.rmtree(workdir, ignore_errors=True)
         raise
