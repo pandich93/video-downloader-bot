@@ -42,13 +42,16 @@ def setup_logging(base_dir: Path) -> None:
         root.addHandler(console)
 
 
+# Временные папки, которые бот создаёт в DOWNLOAD_DIR через tempfile.mkdtemp:
+# vid_ — bot/downloader.py, tt_ — bot/tiktok.py, ed_ — bot/editor/source.py
+TEMP_PREFIXES = ("vid_", "tt_", "ed_")
+
+
 def clean_downloads(path: Path) -> None:
-    """Удаляет временные файлы, оставшиеся после прошлого запуска."""
+    """Удаляет временные папки бота, оставшиеся после прошлого запуска. Чужие файлы не трогает."""
     for p in path.iterdir():
-        if p.is_dir():
+        if p.is_dir() and p.name.startswith(TEMP_PREFIXES):
             shutil.rmtree(p, ignore_errors=True)
-        else:
-            p.unlink(missing_ok=True)
 
 
 async def main() -> None:
