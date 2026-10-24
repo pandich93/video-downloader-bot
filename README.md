@@ -1,286 +1,146 @@
-# Video Downloader Bot
+# PandaDownloader
 
-Приватный Telegram-бот: присылаете ссылку на YouTube / TikTok / Instagram — получаете видео в чат.
+**English** · [Русский](README.ru.md)
 
-## Структура
+[![CI](https://github.com/pandich93/video-downloader-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/pandich93/video-downloader-bot/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)
+![aiogram 3](https://img.shields.io/badge/aiogram-3-2CA5E0.svg)
 
-```
-telegram_bot/
-├── main.py            # точка входа
-├── bot/
-│   ├── config.py      # настройки из .env
-│   ├── downloader.py  # yt-dlp + понижение качества 720p → 480p → 360p
-│   ├── tiktok.py      # TikTok через tikwm.com (обход блокировки)
-│   ├── handlers.py    # приём ссылок, скачивание оригинала, статусы
-│   ├── callbacks.py   # нажатия на кнопки
-│   ├── keyboards.py   # инлайн-кнопки
-│   ├── link_store.py  # временное хранение ссылок (30 минут)
-│   ├── access.py      # доступ: открытый режим или белый список, блокировки
-│   ├── users.py       # пользователи, дневные лимиты, статистика (/stats)
-│   ├── slots.py       # очередь с номером места
-│   ├── mtproto.py     # большие файлы (до 2 ГБ) через Telethon
-│   ├── cache.py       # кэш отправленных видео (SQLite, cache.db)
-│   ├── notify.py      # уведомления администратору об ошибках
-│   ├── updater.py     # автообновление yt-dlp
-│   ├── editor/        # «✂️ Редактировать»: меню, FFmpeg-пресеты, очистка метаданных
-│   └── watcher.py     # перезапуск при изменении .env / restart.flag
-├── deploy/            # install.sh / uninstall.sh / status.sh — автозапуск на Mac
-│   └── windows/       # install / status / uninstall / run (.ps1) — автозапуск на Windows
-├── *.command          # двойной клик на Mac;  *.bat — двойной клик на Windows
-├── logs/              # bot.log (ротация 5 МБ × 3), launchd.log; на Windows ещё stderr.log, runner.log
-├── requirements.txt
-├── .env.example
-└── Dockerfile
-```
+A self-hosted Telegram bot that downloads videos from **YouTube, TikTok and Instagram** and turns them
+into ready-to-post **9:16 clips for TikTok, Reels and Shorts** — with FFmpeg, on your own computer.
 
-## Как пользоваться
+<!--
+  Demo: record 15–20 seconds of the bot (send link → "Edit" → "TikTok" → result), e.g. with
+  ScreenToGif (Windows) or Kap (macOS), export ≤ 5 MB, save as docs/demo.gif and uncomment:
+  <p align="center"><img src="docs/demo.gif" width="320" alt="PandaDownloader demo"></p>
+-->
 
-Отправьте ссылку — бот спросит «Что делаем с видео?» и покажет кнопки
-**📥 Оригинал** и **✂️ Редактировать**. Своё видео можно прислать файлом (до 20 МБ, с MTProto — до 2 ГБ) —
-бот сразу откроет обработку. Кнопки действуют 30 минут, потом ссылку нужно прислать заново.
+> The bot interface is in Russian. Translations are welcome — see [Contributing](CONTRIBUTING.md).
 
-### ✂️ Обработка (подготовка к публикации в TikTok / Reels / Shorts)
+## Features
 
-- **Платформа** (TikTok, Reels, Shorts) — один клик: кадр 9:16 (вертикальное видео обрезается,
-  горизонтальное ставится на размытый фон), H.264 + AAC, громкость около −14 LUFS,
-  очистка метаданных, обрезка до лимита платформы (TikTok — 10 мин, Reels и Shorts — 3 мин).
-- **Уровень оформления** (выбирается перед платформой):
-  🟢 Чистый — формат, метаданные, громкость, лёгкая вариация;
-  🟡 Оформленный — плюс цветовой стиль (по умолчанию «контраст»), логотип и мягкое появление;
-  🟣 Авторский — плюс текст-хук (бот спросит текст перед обработкой), ник `NICK` сверху слева
-  и полоса прогресса цвета `BRAND_COLOR` внизу. В хуке *слово в звёздочках* выделяется жёлтым.
-- **📦 Все 3 платформы** — три файла подряд, у каждого своя вариация.
-- **Отправляйте видео файлом**, а не «медиа»: Telegram сжимает «медиа» ещё на телефоне.
-  iPhone: 📎 → Файл → Фото или видео. ПК: перетащите файл и выключите «Сжать».
-- **⚙️ Настройки:** кадр, ✂️ фрагмент (`0:05-0:40`, `1:10-`, `-0:30`), 💬 текст-хук на первые
-  3 секунды, 🖼 логотип, 🎨 стиль (тёплый / холодный / контраст), появление, ник, полоса прогресса, скорость (1×, 1.05×, 1.1×), вариация, звук. Фрагмент и хук вводятся
-  сообщением после нажатия кнопки.
-- **Логотип:** положите PNG (лучше с прозрачным фоном) в `assets/logo.png` — он встанет в правый
-  верхний угол. Шрифт хука — Montserrat ExtraBold (`assets/fonts`, лицензия OFL); свой — `assets/font.ttf`.
-- **Вариация** — лёгкий случайный зум (2–5%) и цвет: каждый экспорт — отдельный файл.
-- После отправки меню остаётся — можно сразу сделать ещё вариант без повторного скачивания.
-- Обрабатывается одно видео за раз. На ноутбуке с Intel кодирует видеокарта (Quick Sync),
-  если не получится — процессор. Принудительно: `VIDEO_ENCODER=cpu` в `.env`.
-- **TikTok при блокировке:** бот отдаёт ссылку серверам Telegram и забирает файл у них —
-  VPN не нужен (видео до 20 МБ).
+- **Link → video.** Send a link and choose **📥 Original** or **✂️ Edit**.
+- **Fits Telegram's limits.** yt-dlp checks format sizes first and downloads the best quality that fits
+  into 50 MB (720p → 480p → 360p), H.264 preferred so videos play right in the chat.
+- **Instant repeats.** Delivered videos are cached by Telegram `file_id`: the same video sent again
+  (even as `youtu.be` vs `youtube.com`, or a short TikTok link) comes back immediately.
+- **TikTok where tiktok.com is unreachable.** Metadata comes from tikwm.com, and Telegram's own servers
+  fetch the file — no VPN on the host needed for videos up to 20 MB.
+- **Video editor for short-form platforms:**
+  - presets for TikTok (up to 10 min), Reels and Shorts (up to 3 min): 9:16 frame — crop for vertical
+    sources, blurred background for horizontal ones, H.264 + AAC, loudness around −14 LUFS;
+  - three styling levels: 🟢 clean · 🟡 styled (color look, logo, fade-in) · 🟣 authored (text hook for the
+    first 3 seconds, your nickname, a progress bar in your brand color);
+  - trimming (`0:05-0:40`), speed 1×/1.05×/1.1×, metadata removal, a slight random variation per export;
+  - **📦 All 3** — one source, three files; hardware encoding on Intel Quick Sync with CPU fallback.
+- **Files up to 2 GB** through MTProto (Telethon) instead of the Bot API's 20/50 MB.
+- **Public or private.** Whitelist or open mode, daily limits, one job at a time, `/ban`, `/stats`,
+  a queue that shows each user their position.
+- **Runs unattended.** Daily yt-dlp updates, restart on `.env` change or `/restart`, errors are sent to the
+  admin in Telegram. Autostart on Windows (Task Scheduler) and macOS (launchd), or Docker.
 
-### Большие файлы (до 2 ГБ)
+## Quick start (Docker)
 
-Обычный Bot API: бот скачивает из Telegram файлы до 20 МБ и отправляет до 50 МБ. Чтобы снять
-лимит, бот подключается к Telegram ещё и через MTProto (библиотека Telethon) тем же токеном:
-
-1. Откройте my.telegram.org → войдите своим номером → **API development tools** → создайте
-   приложение (название любое).
-2. Впишите в `.env`: `API_ID=...` и `API_HASH=...` — бот перезапустится сам.
-3. В `logs\bot.log` появится «MTProto включён: файлы до 2 ГБ».
-
-После этого: своё видео файлом — до 2 ГБ, результат обработки — в 1080p без сжатия до 50 МБ,
-YouTube для обработки качается в 1080p. Ключи привязаны к вашему аккаунту — никому не передавайте.
-Файл сессии `mtproto.session` в папке бота в git не попадает.
-
-Что важно знать: системы распознавания (Content ID и аналоги) сравнивают содержание ролика,
-поэтому обработка не делает чужое видео «своим». Модуль предназначен для собственного
-и лицензированного контента: привести формат к требованиям платформы и убрать лишние
-метаданные. Водяные знаки модуль не стирает — исходник лучше брать без них (TikTok через
-tikwm скачивается без водяного знака). Охваты сильнее всего зависят от первых секунд, подписи
-и обложки — их лучше менять под каждую платформу вручную.
-
-## Запуск на macOS
-
-1. **Создайте бота.** В Telegram откройте @BotFather → `/newbot` → скопируйте токен.
-2. **Узнайте свой ID.** Напишите @userinfobot — он пришлёт число (ваш user_id).
-3. **Установите зависимости системы** (нужен [Homebrew](https://brew.sh)):
-   ```bash
-   brew install python@3.12 ffmpeg deno
-   ```
-   `ffmpeg` склеивает видео и звук, `deno` нужен yt-dlp для работы с YouTube.
-4. **Установите Python-пакеты:**
-   ```bash
-   cd ~/Desktop/projects/telegram_bot
-   python3.12 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
-5. **Настройте .env:**
-   ```bash
-   cp .env.example .env
-   open -e .env   # впишите BOT_TOKEN и ADMIN_ID
-   ```
-6. **Запустите:**
-   ```bash
-   python main.py
-   ```
-   Отправьте боту ссылку. Остановка — `Ctrl+C`.
-
-## Автозапуск на Mac (launchd)
-
-Бот стартует сам при входе в систему и перезапускается, если упал.
+1. Create a bot with [@BotFather](https://t.me/BotFather) and get your Telegram ID from
+   [@userinfobot](https://t.me/userinfobot).
+2. Run:
 
 ```bash
-cd ~/Desktop/projects/telegram_bot
-./deploy/install.sh     # включить (ручной python main.py перед этим остановите — Ctrl+C)
-./deploy/status.sh      # статус и последние строки лога
-./deploy/uninstall.sh   # выключить
-tail -f logs/bot.log    # смотреть лог в реальном времени
+git clone https://github.com/pandich93/video-downloader-bot.git && cd video-downloader-bot
+cp .env.example .env    # set BOT_TOKEN and ADMIN_ID
+docker build -t video-bot . && docker run -d --name video-bot --restart unless-stopped --env-file .env video-bot
 ```
 
-После изменения `.env` или кода перезапустите: `./deploy/install.sh` ещё раз.
+Send the bot a link. Logs: `docker logs -f video-bot`.
 
-**Если бот не стартует и в `logs/launchd.log` есть `Operation not permitted`** — macOS не пускает
-фоновые программы в папки «Рабочий стол», «Документы», «Загрузки». Два варианта:
-1. *(рекомендуется)* перенести проект, например в `~/bots/telegram_bot`, и пересоздать `.venv`
-   (виртуальное окружение привязано к пути):
-   ```bash
-   ./deploy/uninstall.sh
-   mkdir -p ~/bots && mv ~/Desktop/projects/telegram_bot ~/bots/
-   cd ~/bots/telegram_bot && rm -rf .venv && python3.12 -m venv .venv
-   source .venv/bin/activate && pip install -r requirements.txt
-   ./deploy/install.sh
-   ```
-2. Дать Python «Полный доступ к диску»: Системные настройки → Конфиденциальность и безопасность →
-   Полный доступ к диску → «+» → `Cmd+Shift+G` → путь из команды `realpath .venv/bin/python`.
+## Running without Docker
 
-**Сон Mac.** Когда Mac спит, бот не работает. Чтобы он не засыпал от зарядки:
-Системные настройки → Аккумулятор → Параметры → включить «Предотвращать автоматический переход
-в режим сна при подключении к сети, когда дисплей выключен». Закрытая крышка (без внешнего
-монитора) всё равно усыпляет Mac.
+Requirements: Python 3.12+, [FFmpeg](https://ffmpeg.org/) (merging and editing) and
+[Deno](https://deno.com/) (yt-dlp needs a JS runtime for YouTube).
 
-## Запуск на Windows
-
-1. **Системные программы** (PowerShell):
-   ```powershell
-   winget install --id Python.Python.3.12 -e
-   winget install --id Gyan.FFmpeg -e
-   winget install --id DenoLand.Deno -e
-   ```
-   Закройте и снова откройте PowerShell, чтобы обновился PATH.
-2. **Python-пакеты** (в папке проекта):
-   ```powershell
-   cd D:\development\projects\video-downloader-bot
-   py -3.12 -m venv .venv
-   .venv\Scripts\python -m pip install -r requirements.txt
-   ```
-3. **.env:** `copy .env.example .env`, затем `notepad .env` — впишите BOT_TOKEN и ADMIN_ID.
-4. **Проверка вручную:** `.venv\Scripts\python main.py` → отправьте боту ссылку → `Ctrl+C`.
-
-**Cookies на Windows:** Chrome шифрует cookies так, что yt-dlp их не прочитает. Выгружайте из Firefox
-(`.venv\Scripts\yt-dlp --cookies-from-browser firefox --cookies cookies.txt --skip-download "https://www.instagram.com/"`)
-или расширением браузера «Get cookies.txt LOCALLY».
-
-## Автозапуск на Windows (Планировщик задач)
-
-Бот стартует сам при входе в Windows (без окна) и поднимается после падения. Двойной клик в папке проекта:
-
-| Файл | Что делает |
-|---|---|
-| `Запустить автозапуск.bat` | останавливает бота, запущенного вручную, и включает автозапуск |
-| `Статус бота.bat` | состояние задачи и последние строки логов |
-| `Отключить автозапуск.bat` | останавливает бота и удаляет автозапуск |
-
-- Задача называется `PandaDownloaderBot`, её видно в «Планировщике заданий».
-- Логи: `logs\bot.log` — работа бота, `logs\stderr.log` — ошибки запуска, `logs\runner.log` — перезапуски.
-  В реальном времени: `Get-Content logs\bot.log -Wait -Tail 20 -Encoding UTF8`.
-- После изменения кода — `Запустить автозапуск.bat` ещё раз (или `/restart` в Telegram). `.env` применяется сам.
-- Если при создании задачи «Отказано в доступе» — запустите `.bat` правой кнопкой → «Запуск от имени администратора».
-- При входе в систему на долю секунды мелькает окно PowerShell — это нормально.
-- Ручной запуск (`python main.py`) после `/restart` продолжит работу в том же окне; для постоянной
-  работы используйте автозапуск.
-
-**Сон ноутбука.** Когда ноутбук спит, бот не работает. Чтобы при работе от сети он не засыпал
-и не реагировал на закрытие крышки (PowerShell):
-```powershell
-powercfg /change standby-timeout-ac 0
-powercfg /change hibernate-timeout-ac 0
-powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0
-powercfg /setactive SCHEME_CURRENT
-```
-От батареи ноутбук по-прежнему засыпает. Закрытый ноутбук не убирайте в сумку — он не уснёт и будет греться.
-
-## Перезапуск без доступа к компьютеру
-
-- **Изменили `.env`** — бот сам перезапустится в течение ~30 секунд и применит настройки.
-- **Файл `restart.flag`** в папке бота — перезапуск в течение ~30 секунд (файл удаляется сам).
-- **Команда `/restart`** в Telegram — только для администратора (ADMIN_ID).
-
-Во всех случаях бот сначала дожидается окончания текущих загрузок.
-
-## Уведомления, кэш, автообновление
-
-- **Уведомления:** любая ошибка уровня ERROR приходит администратору в Telegram
-  (одинаковые — не чаще раза в 10 минут). Также бот сообщает о запуске и об обновлении yt-dlp.
-- **Кэш:** отправленные видео запоминаются в `cache.db` — повторная ссылка (в том числе другая
-  форма: youtu.be ↔ youtube.com, короткая ↔ полная TikTok) отправляется мгновенно.
-- **Размер:** yt-dlp сначала узнаёт размер форматов и качает сразу лучшее качество, которое влезает в 50 МБ.
-- **Автообновление:** раз в сутки бот обновляет yt-dlp и, если вышла новая версия, перезапускается
-  (дождавшись окончания текущих загрузок). Отключить: `AUTO_UPDATE=false`.
-
-## Cookies (Instagram и «подтвердите, что вы не бот» на YouTube)
-
-Instagram часто отдаёт видео только авторизованным пользователям. Выгрузите cookies
-из браузера, где вы залогинены:
+| | Install system tools | Autostart |
+|---|---|---|
+| **Windows** | `winget install --id <ID> -e` for `Python.Python.3.12`, `Gyan.FFmpeg`, `DenoLand.Deno` | double-click `Запустить автозапуск.bat` |
+| **macOS** | `brew install python@3.12 ffmpeg deno` | `./deploy/install.sh` |
+| **Linux** | your package manager | Docker or a systemd unit |
 
 ```bash
-yt-dlp --cookies-from-browser chrome --cookies cookies.txt --skip-download "https://www.instagram.com/"
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt          # Windows: .venv\Scripts\pip ...
+cp .env.example .env                               # set BOT_TOKEN and ADMIN_ID
+.venv/bin/python main.py
 ```
 
-и укажите в `.env`: `COOKIES_FILE=cookies.txt`. Файл содержит вашу сессию — никому его не передавайте.
+Platform details (sleep settings, macOS folder permissions, Windows logs) are in the
+[Russian README](README.ru.md#запуск-на-macos).
 
-## TikTok и другие заблокированные сайты
+## Configuration
 
-В Узбекистане TikTok заблокирован, поэтому с домашнего интернета yt-dlp получает
-ошибку `SSL: UNEXPECTED_EOF_WHILE_READING`.
+All settings live in `.env` (see [.env.example](.env.example)). Changing `.env` restarts the bot within ~30 s.
 
-**По умолчанию бот качает TikTok через сервис tikwm.com** (`bot/tiktok.py`): он сам
-забирает видео с TikTok и отдаёт его со своего домена, без водяного знака — VPN не нужен.
-Если tikwm недоступен, бот пробует yt-dlp (с PROXY, если он задан). Другие варианты:
+| Variable | Default | Meaning |
+|---|---|---|
+| `BOT_TOKEN` | — | Token from @BotFather (required) |
+| `ADMIN_ID` | first of `ALLOWED_USER_IDS` | Your Telegram ID: admin commands, notifications, no limits |
+| `ALLOWED_USER_IDS` | empty = open to everyone | Comma-separated whitelist |
+| `DAILY_LIMIT` | `20` | Jobs per user per day, `0` = unlimited |
+| `PUBLIC_MAX_FILE_MB` | `500` | Max uploaded file for regular users (needs MTProto) |
+| `BLOCKED_USER_IDS` | — | Comma-separated bans (also `/ban id`) |
+| `COOKIES_FILE` | — | Netscape cookies for Instagram / YouTube "confirm you're not a bot" |
+| `PROXY`, `PROXY_TYPE` | — | Proxy for all downloads, e.g. `socks5://127.0.0.1:1080` or `host:port:user:pass` |
+| `API_ID`, `API_HASH` | — | From [my.telegram.org](https://my.telegram.org) — enables files up to 2 GB |
+| `VIDEO_ENCODER` | `auto` | `auto` / `qsv` / `cpu` |
+| `BRAND_COLOR`, `NICK` | `#FF4D00`, — | Progress bar color and nickname for the 🟣 level |
+| `DOWNLOAD_DIR`, `MAX_FILE_MB` | `downloads`, `50` | Temp folder (**cleared on start**) and Bot API size limit |
+| `AUTO_UPDATE`, `UPDATE_INTERVAL_HOURS` | `true`, `24` | yt-dlp self-update |
+| `NOTIFY_ON_START`, `NOTIFY_NEW_USERS` | `true` | Admin notifications |
 
-1. **VPN на весь Mac** (системный режим / TUN) — код менять не нужно.
-2. **Прокси только для бота.** Многие VPN-клиенты (Hiddify, v2rayN, Clash, Outline и др.)
-   поднимают локальный прокси. Посмотрите адрес в настройках клиента и впишите в `.env`:
-   `PROXY=socks5://127.0.0.1:1080`. Через прокси пойдут все загрузки бота.
-3. **VPS за границей** (см. Docker ниже) — прокси не нужен.
+Your own logo: put a PNG into `assets/logo.png`. Your own font: `assets/font.ttf`.
 
-## Обновление yt-dlp
+**Admin commands:** `/stats` · `/ban <id>` · `/unban <id>` · `/restart`.
 
-Сайты регулярно меняются, и старый yt-dlp перестаёт работать. Если бот начал падать на
-ссылках, которые раньше работали, — первым делом обновите:
+## How it works
+
+```
+Telegram ──► aiogram handlers ──► access & limits ──► download queue (2) ──► yt-dlp / tikwm
+                    │                                        │
+                    └──► editor sessions ──► encode queue (1) ──► FFmpeg + Pillow overlays
+                                                             │
+                     SQLite cache (file_id, users, jobs) ◄───┴──► Bot API (≤ 50 MB) or MTProto (≤ 2 GB)
+```
+
+## FAQ
+
+**"Video is larger than 50 MB".** That is the Bot API limit. Add `API_ID`/`API_HASH` to send up to 2 GB.
+
+**Instagram or YouTube asks to log in.** Export cookies from a browser where you are logged in
+(`yt-dlp --cookies-from-browser firefox --cookies cookies.txt --skip-download "https://www.instagram.com/"`)
+and set `COOKIES_FILE=cookies.txt`. The file is your session — keep it private.
+
+**A site stopped working.** Update yt-dlp: `pip install -U "yt-dlp[default]"` (the bot also does it daily).
+
+**Can I run it for other people?** Yes — leave `ALLOWED_USER_IDS` empty. Mind your home IP (YouTube may
+rate-limit it), the queue on a laptop, and the legal note below.
+
+## Development
 
 ```bash
-pip install -U "yt-dlp[default]"
+pip install -r requirements-dev.txt
+ruff check .
+pytest
 ```
 
-## Запуск на VPS через Docker
+Tests need no network, FFmpeg or bot token. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-```bash
-docker build -t video-bot .
-docker run -d --name video-bot --restart unless-stopped --env-file .env video-bot
-```
+## Legal
 
-Для cookies: `-v $(pwd)/cookies.txt:/app/cookies.txt` и `COOKIES_FILE=/app/cookies.txt`.
-Обновление yt-dlp в Docker = пересборка образа (`docker build --no-cache ...`).
-YouTube чаще блокирует IP дата-центров — на VPS cookies для YouTube почти обязательны.
+PandaDownloader is a tool for **your own and licensed content**: converting your videos to platform
+requirements and removing technical metadata. You are responsible for complying with copyright law and
+the terms of service of YouTube, TikTok, Instagram and Telegram. The editor does not make someone else's
+video "yours": Content ID and similar systems compare the content itself. This project is not affiliated
+with any of these services and uses the third-party service tikwm.com, which may change or stop at any time.
 
-## Публичный режим (бот для всех)
+## License
 
-Пустой `ALLOWED_USER_IDS` — ботом может пользоваться любой человек. Список ID — только эти люди.
-Администратор (`ADMIN_ID`) всегда без ограничений и без очереди.
-
-- **Лимиты:** одна задача за раз и `DAILY_LIMIT` задач в сутки (по умолчанию 20; «📦 Все 3» — 3 задачи).
-  Повторная ссылка, которая уже есть в кэше, лимит не тратит. Своё видео файлом — до
-  `PUBLIC_MAX_FILE_MB` (по умолчанию 500 МБ, нужен MTProto), администратору — до 2 ГБ.
-- **Очередь:** одновременно 2 скачивания и 1 обработка; остальные видят свой номер («вы 3-й»).
-- **Команды администратора:** `/stats` — пользователи и задачи за сутки, `/ban id`, `/unban id`,
-  `/restart`. Новые пользователи и ошибки (с ID пользователя) приходят администратору в Telegram.
-- **Учёт** — таблицы `users` и `jobs` в `cache.db`.
-
-**Риски публичного бота на домашнем компьютере:** ноутбук обрабатывает по одному видео — при
-наплыве людей очередь станет длинной; YouTube может временно заблокировать домашний IP за частые
-запросы; на бота могут жаловаться правообладатели — Telegram вправе его заблокировать.
-Для большого потока — VPS (см. «Запуск на VPS через Docker»).
-
-## Ограничения
-
-- Обычный Bot API принимает файлы до **50 МБ**. Бот пробует 720p → 480p → 360p; если не влезает — сообщает.
-- Из карусели Instagram скачивается первое видео.
-- Скачивайте и обрабатывайте только контент, на который у вас есть права.
-# video-downloader-bot
+[MIT](LICENSE). The bundled Montserrat font is under the [SIL Open Font License](assets/fonts/OFL.txt).

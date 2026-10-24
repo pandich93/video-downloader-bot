@@ -1,0 +1,46 @@
+name: Bug report
+description: Something does not work as described
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Before you start:
+        - update yt-dlp (`pip install -U "yt-dlp[default]"`) — most download errors are fixed there;
+        - **never paste** your `BOT_TOKEN`, `API_HASH`, cookies or `.env` contents.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Download (YouTube)
+        - Download (TikTok)
+        - Download (Instagram)
+        - Video editor (FFmpeg)
+        - Large files (MTProto)
+        - Access, limits, admin commands
+        - Autostart / deploy
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt
+      description: The relevant lines from `logs/bot.log`. Remove user IDs and links you do not want to share.
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Python version, how you run the bot (manual / Docker / autostart), yt-dlp version.
+      placeholder: "Windows 11, Python 3.12, autostart, yt-dlp 2026.10.21"
+    validations:
+      required: true
