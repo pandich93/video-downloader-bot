@@ -11,5 +11,11 @@ tmp/
 *.mkv
 *.part
 cookies*.txt
+*.session
+*.session-journal
+.requirements.sha
 *.log
 .DS_Store
+# SQLite: кэш видео и данные пользователей — не для git
+cache.db
+cache.db-journal

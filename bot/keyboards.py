@@ -6,7 +6,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardMarkup
 
 CHOOSE_TEXT = "Что делаем с видео?"
-EDIT_STUB_TEXT = "✂️ Скоро: обработка видео.\nПока можно скачать оригинал."
 
 
 class VideoAction(CallbackData, prefix="v"):
@@ -19,10 +18,4 @@ def choose_kb(key: str) -> InlineKeyboardMarkup:
     kb.button(text="📥 Оригинал", callback_data=VideoAction(action="original", key=key))
     kb.button(text="✂️ Редактировать", callback_data=VideoAction(action="edit", key=key))
     kb.adjust(2)
-    return kb.as_markup()
-
-
-def edit_stub_kb(key: str) -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    kb.button(text="← Назад", callback_data=VideoAction(action="back", key=key))
     return kb.as_markup()

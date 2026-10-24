@@ -1,0 +1,5 @@
+# Окончания строк: скрипты Windows — CRLF, скрипты Mac — LF (иначе ломаются при переносе через git)
+*.bat     text eol=crlf
+*.ps1     text eol=crlf
+*.sh      text eol=lf
+*.command text eol=lf

@@ -9,13 +9,17 @@ from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 
+from bot import mtproto
 from bot.access import AccessMiddleware
 from bot.cache import VideoCache
 from bot.callbacks import router as callbacks_router
 from bot.config import load_settings, mask_proxy
+from bot.editor import editor_router
+from bot.editor.ffmpeg import missing_tools
 from bot.handlers import is_busy, router
 from bot.notify import Notifier, TelegramLogHandler
-from bot.updater import auto_update_loop
+from bot.updater import auto_update_loop, ensure_requirements
+from bot.users import Users
 from bot.watcher import watch_loop
 
 FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -50,6 +54,7 @@ def clean_downloads(path: Path) -> None:
 async def main() -> None:
     settings = load_settings()
     setup_logging(settings.base_dir)
+    await ensure_requirements(settings.base_dir)  # новые пакеты из requirements.txt — сами
     clean_downloads(settings.download_dir)
 
     # Увеличенный таймаут: загрузка 50 МБ в Telegram может занять пару минут
@@ -59,17 +64,33 @@ async def main() -> None:
     logging.getLogger().addHandler(TelegramLogHandler(notifier, asyncio.get_running_loop()))
 
     cache = VideoCache(settings.base_dir / "cache.db")
-    dp = Dispatcher(settings=settings, cache=cache, notifier=notifier)
-    # Доступ только из белого списка; остальным бот сообщает их ID
-    access = AccessMiddleware(settings.allowed_user_ids)
+    users = Users(settings.base_dir / "cache.db", settings.admin_id, settings.daily_limit,
+                  settings.blocked_user_ids)
+    dp = Dispatcher(settings=settings, cache=cache, notifier=notifier, users=users)
+    # Открытый режим или белый список, блокировки, учёт пользователей
+    access = AccessMiddleware(settings, users, notifier)
     dp.message.outer_middleware(access)
     dp.callback_query.outer_middleware(access)
-    dp.include_routers(router, callbacks_router)
+    # editor_router первым: он перехватывает ввод фрагмента и хука раньше обработчика ссылок
+    dp.include_routers(editor_router, router, callbacks_router)
 
     await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("Бот запущен. Разрешённые ID: %s, админ: %s",
-                 sorted(settings.allowed_user_ids), settings.admin_id)
+    mode = ("открыт для всех" if settings.is_public
+            else f"только для {sorted(settings.allowed_user_ids)}")
+    logging.info("Бот запущен: %s, админ %s, лимит %s задач/сутки", mode, settings.admin_id,
+                 settings.daily_limit or "∞")
     logging.info("Прокси: %s", mask_proxy(settings.proxy) if settings.proxy else "не задан")
+    if missing := missing_tools():
+        logging.warning("Не найдены %s — обработка видео работать не будет (README)", ", ".join(missing))
+    if settings.api_id and settings.api_hash:
+        try:
+            await mtproto.start(settings.api_id, settings.api_hash, settings.bot_token,
+                                settings.base_dir / "mtproto")
+            logging.info("MTProto включён: файлы до 2 ГБ")
+        except Exception:
+            logging.exception("MTProto не запустился — работаем с лимитами Bot API (20/50 МБ)")
+    else:
+        logging.info("MTProto выключен (нет API_ID/API_HASH): лимиты Bot API 20/50 МБ")
     if settings.notify_on_start:
         # В фоне: если Telegram отвечает медленно, бот всё равно сразу начинает работать
         start_note = asyncio.create_task(notifier.send("✅ Бот запущен"))  # noqa: F841
@@ -83,7 +104,10 @@ async def main() -> None:
     watcher_task = asyncio.create_task(  # noqa: F841
         watch_loop(settings.base_dir, notifier, is_busy))
 
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await mtproto.stop()
 
 
 if __name__ == "__main__":

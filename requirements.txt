@@ -1,0 +1,6 @@
+aiogram>=3.10,<4
+yt-dlp[default]
+python-dotenv>=1.0
+telethon>=1.36,<2
+cryptg
+Pillow>=10
