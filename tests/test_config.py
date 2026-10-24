@@ -52,6 +52,23 @@ def test_env_example_copied_as_is_is_safe(env, tmp_path):
     assert settings.download_dir.is_relative_to(tmp_path)
 
 
+@pytest.mark.parametrize("value", [".", "./", "..", "{root}", "{parent}"])
+def test_download_dir_must_not_contain_project(env, tmp_path, value):
+    """Папку загрузок бот очищает при запуске — корень проекта и папки выше него запрещены."""
+    env.setenv("DOWNLOAD_DIR", value.format(root=tmp_path, parent=tmp_path.parent))
+    with pytest.raises(SystemExit, match="DOWNLOAD_DIR"):
+        load_settings()
+
+
+def test_download_dir_inside_or_outside_project_is_allowed(env, tmp_path, tmp_path_factory):
+    env.setenv("DOWNLOAD_DIR", "cache/dl")
+    assert load_settings().download_dir == tmp_path / "cache" / "dl"
+
+    elsewhere = tmp_path_factory.mktemp("elsewhere")
+    env.setenv("DOWNLOAD_DIR", str(elsewhere))
+    assert load_settings().download_dir == elsewhere
+
+
 @pytest.mark.parametrize("raw, scheme, expected", [
     ("", "http", None),
     ("   ", "http", None),

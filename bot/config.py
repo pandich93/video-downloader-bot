@@ -128,6 +128,9 @@ def load_settings() -> Settings:
     # Пустое значение — по умолчанию: иначе папкой загрузок стал бы корень проекта,
     # а её содержимое удаляется при каждом запуске
     download_dir = _path(os.getenv("DOWNLOAD_DIR", "").strip() or "downloads")
+    if BASE_DIR.resolve().is_relative_to(download_dir.resolve()):
+        raise SystemExit(f"DOWNLOAD_DIR={download_dir}: это папка бота или папка выше неё — "
+                         "при запуске её содержимое удаляется. Укажите отдельную папку, например downloads")
     download_dir.mkdir(parents=True, exist_ok=True)
 
     return Settings(
