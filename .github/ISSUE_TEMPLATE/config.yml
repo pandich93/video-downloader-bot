@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/pandich93/video-downloader-bot/security/advisories/new
+    about: Report security issues privately, not in public issues.
+  - name: Site stopped working in yt-dlp
+    url: https://github.com/yt-dlp/yt-dlp/issues
+    about: If yt-dlp itself fails on a link after updating, report it upstream.

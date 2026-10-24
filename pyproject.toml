@@ -1,0 +1,14 @@
+# Настройки инструментов разработки. Бот запускается как раньше: python main.py
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = [".venv", "downloads", "logs"]
+
+[tool.ruff.lint]
+# Классический набор pyflakes + синтаксические ошибки: ловит баги, не спорит о стиле
+select = ["E4", "E7", "E9", "F"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
