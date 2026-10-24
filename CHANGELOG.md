@@ -18,6 +18,11 @@ versions follow [Semantic Versioning](https://semver.org/).
   database and logs out of Docker images.
 - `.env.example` no longer contains a real nickname.
 
+### Fixed
+- Windows autostart: the scheduled task now checks every 5 minutes and starts the bot again if its
+  wrapper was killed; `run.ps1` exits when the bot is already running, so there is no second copy.
+  Run `Запустить автозапуск.bat` again to update an existing task.
+
 ## [1.0.0] — planned first public release
 
 ### Added

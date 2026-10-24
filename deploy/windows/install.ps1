@@ -1,5 +1,6 @@
 ﻿# Включает автозапуск бота через Планировщик задач Windows:
-# старт при входе в систему, без окна, перезапуск после падения.
+# старт при входе в систему, без окна, перезапуск после падения,
+# проверка каждые 5 минут — если бот не работает, задача запускает его снова.
 # Перед этим останавливает бота, запущенного вручную из этой папки.
 . (Join-Path $PSScriptRoot 'common.ps1')
 
@@ -37,7 +38,12 @@ $user      = "$env:USERDOMAIN\$env:USERNAME"
 $action    = New-ScheduledTaskAction -Execute 'powershell.exe' `
              -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Runner`"" `
              -WorkingDirectory $Dir
-$trigger   = New-ScheduledTaskTrigger -AtLogOn -User $user
+# Второй триггер — каждые 5 минут: поднимает бота, если обёртку run.ps1 убили снаружи
+# (RestartCount на это не срабатывает). Пока бот работает, IgnoreNew не даёт запустить дубль.
+$trigger   = @(
+    New-ScheduledTaskTrigger -AtLogOn -User $user
+    New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)
+)
 $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
              -StartWhenAvailable -MultipleInstances IgnoreNew `
              -ExecutionTimeLimit ([TimeSpan]::Zero) `
@@ -47,7 +53,7 @@ $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -Ru
 try {
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
         -Settings $settings -Principal $principal -Force -ErrorAction Stop `
-        -Description 'PandaDownloader: Telegram-бот, автозапуск при входе в систему' | Out-Null
+        -Description 'PandaDownloader: Telegram-бот, автозапуск при входе в систему и проверка каждые 5 минут' | Out-Null
 } catch {
     Write-Host "[X] Не удалось создать задачу: $($_.Exception.Message)"
     Write-Host '    Запустите «Запустить автозапуск.bat» правой кнопкой -> «Запуск от имени администратора».'
