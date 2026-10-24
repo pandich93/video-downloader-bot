@@ -9,6 +9,11 @@ $LogDir = Join-Path $Dir 'logs'
 $RunLog = Join-Path $LogDir 'runner.log'
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
+# Без дублей: задача проверяет бота каждые 5 минут. Если он уже работает из этой папки
+# (запущен вручную или второй обёрткой), второй экземпляр поймал бы конфликт в Telegram — выходим.
+. (Join-Path $PSScriptRoot 'common.ps1')
+if (@(Get-BotProcesses).Count -gt 0) { exit 0 }
+
 $RESTART_EXIT_CODE = 75
 
 $env:BOT_SUPERVISED   = '1'   # бот знает, что его перезапустит обёртка
