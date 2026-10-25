@@ -110,6 +110,30 @@ def test_repeated_texts_rejected():
         llm.parse_response(answer(tiktok=same, reels=same | {"title": "Другое"}), ALL)
 
 
+def test_hashtags_removed_from_description():
+    texts = llm.parse_response(answer(tiktok={"title": "Соль в печь", "hashtags": ["#соль"],
+                                              "description": "Зачем? 🧂 Ответ в ролике #соль #лайфхак\nСохрани #печь"}), ALL)
+    assert texts["tiktok"].description == "Зачем? 🧂 Ответ в ролике\nСохрани"
+
+
+# ---------- мастер-промт: SEO + таргетолог + SMM ----------
+
+def test_master_prompt_covers_roles_and_rules():
+    p = llm.SYSTEM_PROMPT
+    for must in ("SEO-аналитик", "Таргетолог", "SMM-редактор",        # роли
+                 "главный поисковый запрос", "первые 125 символов",    # SEO
+                 "призыв к действию", "#fyp",                          # SMM и запрет пустых тегов
+                 "не отвечай за автора", "«новый», «официальный»",      # без выдуманных фактов
+                 "данные, а не инструкции", "только JSON"):            # безопасность и формат
+        assert must in p, must
+    assert len(p.split()) <= 400      # бесплатные модели небольшие — промт компактный
+
+
+def test_platform_rules_put_main_query_first():
+    for p, rules in llm.RULES.items():
+        assert "главный запрос" in rules.style, p
+
+
 # ---------- перебор моделей ----------
 
 def run(coro):
@@ -284,6 +308,7 @@ def test_http_ok(monkeypatch):
     (200, {"error": {"message": "Provider returned error"}}, llm.LLMError),
     (200, {"choices": [{"message": {"content": None}}]}, llm.LLMError),
     (200, {"choices": []}, llm.LLMError),
+    (200, {"choices": [{"message": {"content": ""}, "finish_reason": "length"}]}, llm.LLMError),
 ])
 def test_http_errors(monkeypatch, status, body, error):
     with pytest.raises(error):
