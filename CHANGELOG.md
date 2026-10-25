@@ -22,6 +22,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   if none answers, up to 5 current free models come from the public catalog); one request per run, even for
   **📦 All 3**. On any failure — the original text and a warning in the log. In public mode AI texts are
   for the admin and `ALLOWED_USER_IDS` unless `LLM_PUBLIC=true`.
+- AI texts are written by an SEO master prompt (SEO analyst + targeting specialist + SMM editor): the main
+  search query goes first in the title and in the first 125 characters, hashtags are broad + niche + topic
+  (no empty tags like #fyp), a call to action fits the video, and nothing is added that the original does
+  not say — a question without an answer stays a teaser. Hashtags are no longer repeated inside the
+  description. Reasoning models get 8000 tokens and 180 s, so their answers are no longer cut off;
+  the default free models are the ones that actually answered in testing.
 
 ### Changed
 - **📦 All 3** picks the three variations together: every parameter falls into its own third of the
