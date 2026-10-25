@@ -6,6 +6,7 @@ import re
 import sqlite3
 import time
 from pathlib import Path
+from typing import NamedTuple
 from urllib.parse import parse_qs, urlparse
 
 log = logging.getLogger(__name__)
@@ -44,13 +45,23 @@ def normalize_url(url: str) -> str:
     return f"{host}{path}"
 
 
+class CachedVideo(NamedTuple):
+    file_id: str
+    title: str
+    description: str
+
+
 class VideoCache:
     def __init__(self, path: Path) -> None:
         self.db = sqlite3.connect(path)
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS videos ("
-            " key TEXT PRIMARY KEY, file_id TEXT NOT NULL, title TEXT, created REAL)"
+            " key TEXT PRIMARY KEY, file_id TEXT NOT NULL, title TEXT, created REAL, description TEXT)"
         )
+        # кэш от прошлых версий — без описания: добавляем колонку, старые записи остаются
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(videos)")}
+        if "description" not in columns:
+            self.db.execute("ALTER TABLE videos ADD COLUMN description TEXT")
         self.db.commit()
 
     @staticmethod
@@ -63,14 +74,15 @@ class VideoCache:
         """Ключ кэша по уже нормализованному id, например tt:7685980523839180054."""
         return f"{mode}|{norm}"
 
-    def get(self, key: str) -> tuple[str, str] | None:
-        row = self.db.execute("SELECT file_id, title FROM videos WHERE key = ?", (key,)).fetchone()
-        return (row[0], row[1] or "") if row else None
+    def get(self, key: str) -> CachedVideo | None:
+        row = self.db.execute("SELECT file_id, title, description FROM videos WHERE key = ?",
+                              (key,)).fetchone()
+        return CachedVideo(row[0], row[1] or "", row[2] or "") if row else None
 
-    def set(self, key: str, file_id: str, title: str = "") -> None:
+    def set(self, key: str, file_id: str, title: str = "", description: str = "") -> None:
         self.db.execute(
-            "INSERT OR REPLACE INTO videos (key, file_id, title, created) VALUES (?, ?, ?, ?)",
-            (key, file_id, title, time.time()),
+            "INSERT OR REPLACE INTO videos (key, file_id, title, created, description) VALUES (?, ?, ?, ?, ?)",
+            (key, file_id, title, time.time(), description),
         )
         self.db.commit()
 

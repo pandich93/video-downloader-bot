@@ -32,11 +32,30 @@ def test_cache_roundtrip(tmp_path):
     key = VideoCache.key("https://youtu.be/abc")
     assert cache.get(key) is None
 
-    cache.set(key, "file-id-1", "Title")
-    assert cache.get(key) == ("file-id-1", "Title")
+    cache.set(key, "file-id-1", "Title", "Description #tag")
+    assert cache.get(key) == ("file-id-1", "Title", "Description #tag")
+    assert cache.get(key).description == "Description #tag"
 
     cache.set(key, "file-id-2")          # повторная запись заменяет старую
-    assert cache.get(key) == ("file-id-2", "")
+    assert cache.get(key) == ("file-id-2", "", "")
 
     cache.delete(key)
     assert cache.get(key) is None
+
+
+def test_cache_from_old_version_keeps_records(tmp_path):
+    """База без колонки description (прошлые версии) — записи сохраняются, описание пустое."""
+    import sqlite3
+
+    path = tmp_path / "cache.db"
+    db = sqlite3.connect(path)
+    db.execute("CREATE TABLE videos (key TEXT PRIMARY KEY, file_id TEXT NOT NULL, title TEXT, created REAL)")
+    db.execute("INSERT INTO videos VALUES ('original|yt:abc', 'old-file-id', 'Old title', 0)")
+    db.commit()
+    db.close()
+
+    cache = VideoCache(path)
+    assert cache.get("original|yt:abc") == ("old-file-id", "Old title", "")
+    cache.set("original|yt:new", "new-id", "New", "Desc")
+    assert cache.get("original|yt:new").description == "Desc"
+    VideoCache(path)                     # повторное открытие — миграция не падает

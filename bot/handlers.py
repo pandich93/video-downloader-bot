@@ -6,13 +6,14 @@ import logging
 import re
 from urllib.parse import urlparse
 
-from aiogram import Router, F
+from aiogram import Bot, Router, F
 from aiogram.enums import ChatAction
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import FSInputFile, Message
+from aiogram.types import FSInputFile, LinkPreviewOptions, Message, ReplyParameters
 
 from bot.cache import VideoCache
+from bot.captions import build_caption, original_text
 from bot.config import Settings
 from bot.downloader import DownloadFailed, VideoFile, download_video
 from bot.keyboards import CHOOSE_TEXT, choose_kb
@@ -71,16 +72,31 @@ def _file_id(sent: Message | None) -> str | None:
     return sent.video.file_id if sent and sent.video else None
 
 
+async def send_extra(bot: Bot, chat_id: int, video_message_id: int | None, parts: list[str]) -> None:
+    """Полный текст оригинала, не влезший в подпись, — ответом на видео."""
+    reply = (ReplyParameters(message_id=video_message_id, allow_sending_without_reply=True)
+             if video_message_id else None)
+    for part in parts:
+        try:
+            await bot.send_message(chat_id, part, reply_parameters=reply,
+                                   link_preview_options=LinkPreviewOptions(is_disabled=True))
+        except TelegramAPIError as e:
+            log.info("Не удалось отправить описание: %s", e)
+            return
+
+
+async def _reply_video(message: Message, video, text: str, **kwargs) -> Message:
+    """Видео с названием и описанием оригинала в подписи (без parse_mode — текст как есть)."""
+    caption, extra = build_caption(text)
+    sent = await message.reply_video(video, caption=caption, supports_streaming=True, **kwargs)
+    await send_extra(message.bot, sent.chat.id, sent.message_id, extra)
+    return sent
+
+
 async def _send_file(message: Message, video: VideoFile) -> Message:
     await message.bot.send_chat_action(message.chat.id, ChatAction.UPLOAD_VIDEO)
-    return await message.reply_video(
-        FSInputFile(video.path),
-        caption=video.title[:1000] or None,
-        duration=video.duration,
-        width=video.width,
-        height=video.height,
-        supports_streaming=True,
-    )
+    return await _reply_video(message, FSInputFile(video.path), original_text(video.title, video.description),
+                              duration=video.duration, width=video.width, height=video.height)
 
 
 async def _handle_tiktok(message: Message, status: Message, url: str,
@@ -110,8 +126,7 @@ async def _handle_tiktok(message: Message, status: Message, url: str,
     await status.edit_text("📤 Отправляю…")
     for link in info.links(URL_UPLOAD_LIMIT):
         try:
-            sent = await message.reply_video(link, caption=info.title[:1000] or None,
-                                             duration=info.duration, supports_streaming=True)
+            sent = await _reply_video(message, link, info.title, duration=info.duration)
             remember(sent)
             return True
         except TelegramAPIError as e:
@@ -133,7 +148,7 @@ def cache_link(cache: VideoCache, url: str, id_key: str) -> None:
     """Запоминаем и эту форму ссылки — в следующий раз хватит одного запроса к кэшу."""
     hit = cache.get(id_key)
     if hit:
-        cache.set(cache.key(url), hit[0], hit[1])
+        cache.set(cache.key(url), hit.file_id, hit.title, hit.description)
 
 
 async def _send_cached(message: Message, cache: VideoCache, key: str) -> bool:
@@ -141,9 +156,8 @@ async def _send_cached(message: Message, cache: VideoCache, key: str) -> bool:
     hit = cache.get(key)
     if not hit:
         return False
-    file_id, title = hit
     try:
-        await message.reply_video(file_id, caption=title[:1000] or None, supports_streaming=True)
+        await _reply_video(message, hit.file_id, original_text(hit.title, hit.description))
         log.info("Отправлено из кэша: %s", key)
         return True
     except TelegramAPIError as e:
@@ -300,7 +314,7 @@ async def _download_original(reply_to: Message, status: Message, url: str, key: 
         await show("📤 Отправляю…")
         sent = await _send_file(reply_to, video)
         if _file_id(sent):
-            cache.set(key, _file_id(sent), video.title)
+            cache.set(key, _file_id(sent), video.title, video.description)
         await status.delete()
     finally:
         video.cleanup()

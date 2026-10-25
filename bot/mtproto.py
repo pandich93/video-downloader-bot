@@ -79,7 +79,8 @@ async def download(message_id: int, dest: Path, progress: ProgressCb | None = No
 
 async def send_video(chat_id: int, reply_to: int | None, path: Path, *, caption: str,
                      duration: float, width: int, height: int, thumb: Path | None = None,
-                     progress: ProgressCb | None = None) -> None:
+                     progress: ProgressCb | None = None) -> int:
+    """Отправляет видео и возвращает номер сообщения (у бота он тот же, что в Bot API)."""
     from telethon.tl.types import DocumentAttributeVideo
 
     try:
@@ -87,10 +88,13 @@ async def send_video(chat_id: int, reply_to: int | None, path: Path, *, caption:
     except ValueError:
         # Собеседник ещё не встречался этой MTProto-сессии — узнаём его из сообщения
         peer = await (await _message(reply_to)).get_input_chat()
-    await _client.send_file(
-        peer, str(path), caption=caption, reply_to=reply_to, thumb=str(thumb) if thumb else None,
+    # parse_mode=None: по умолчанию Telethon разбирает Markdown и испортил бы ** и __ из описания
+    sent = await _client.send_file(
+        peer, str(path), caption=caption, parse_mode=None, reply_to=reply_to,
+        thumb=str(thumb) if thumb else None,
         supports_streaming=True, force_document=False,
         attributes=[DocumentAttributeVideo(duration=int(duration), w=width, h=height,
                                            supports_streaming=True)],
         progress_callback=_progress(progress),
     )
+    return sent.id

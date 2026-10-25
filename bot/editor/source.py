@@ -39,7 +39,8 @@ def _workdir(base: Path) -> Path:
     return Path(tempfile.mkdtemp(prefix="ed_", dir=base))
 
 
-async def from_telegram(bot: Bot, file_id: str, base_dir: Path, title: str = "") -> VideoFile:
+async def from_telegram(bot: Bot, file_id: str, base_dir: Path, title: str = "",
+                        description: str = "") -> VideoFile:
     workdir = _workdir(base_dir)
     try:
         file = await bot.get_file(file_id)
@@ -48,7 +49,7 @@ async def from_telegram(bot: Bot, file_id: str, base_dir: Path, title: str = "")
         dest = workdir / "source.mp4"
         await bot.download_file(file.file_path, destination=dest, timeout=180)
         return VideoFile(path=dest, title=title, duration=None, width=None, height=None,
-                         workdir=workdir)
+                         workdir=workdir, description=description)
     except BaseException:
         shutil.rmtree(workdir, ignore_errors=True)
         raise
@@ -71,7 +72,7 @@ async def _try_cached(bot: Bot, cache: VideoCache, key: str, base_dir: Path) -> 
     if not hit:
         return None
     try:
-        return await from_telegram(bot, hit[0], base_dir, hit[1])
+        return await from_telegram(bot, hit.file_id, base_dir, hit.title, hit.description)
     except (TelegramAPIError, DownloadFailed) as e:
         log.info("Исходник из кэша не получен (%s), качаем заново", e)
         return None
