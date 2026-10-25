@@ -12,6 +12,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 - MIT license, contributing guide, code of conduct, security policy, issue and PR templates.
 - Variation strength in the editor settings: medium (default, as before), light (about half as strong)
   or off. Each variation records its `seed` in the log, so it can be reproduced.
+- The original title and description go into the video caption — for downloads and for edited videos
+  (above the "Изменено: …" line). Text longer than the 1024-character caption is shortened with "…"
+  and sent in full as the next message (once per **📦 All 3** batch). The description is also kept in
+  the `file_id` cache; `cache.db` from earlier versions is migrated in place, no records are lost.
 
 ### Changed
 - **📦 All 3** picks the three variations together: every parameter falls into its own third of the
@@ -23,6 +27,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 - `.env.example` no longer contains a real nickname.
 
 ### Fixed
+- A connection reset by the provider (`ConnectionResetError`, WinError 10054) is now treated as a blocked
+  site: the user gets the "enable VPN or PROXY" hint and the admin no longer gets an error notification.
+- Captions of files sent through MTProto are no longer parsed as Markdown, so `**` and `__` from the
+  original text stay as they are.
 - "As in the original" frame with variation: the zoom no longer shrinks the video (e.g. 1920×1080 → 1850×1040),
   so the hook, nickname and logo land where they were laid out.
 - Windows autostart: the scheduled task now checks every 5 minutes and starts the bot again if its

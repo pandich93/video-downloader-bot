@@ -12,6 +12,7 @@ from aiogram.types import (CallbackQuery, FSInputFile, InlineKeyboardMarkup, Mes
 
 from bot import mtproto
 from bot.cache import VideoCache
+from bot.captions import build_caption, original_text
 from bot.config import Settings
 from bot.downloader import DownloadFailed
 from bot.editor.ffmpeg import (PROJECT_DIR, EditFailed, RenderResult, make_thumbnail,
@@ -23,7 +24,7 @@ from bot.editor.options import (LEVELS, PLATFORMS, EditOptions, apply_level, par
                                 preset, toggle, validate_hook)
 from bot.editor.sessions import EditSession, sessions
 from bot.editor.source import TELEGRAM_DOWNLOAD_LIMIT, Source, fetch
-from bot.handlers import download_queue, job_slot, queue_text
+from bot.handlers import download_queue, job_slot, queue_text, send_extra
 from bot.slots import SlotQueue
 from bot.users import LimitError, Users
 
@@ -232,18 +233,26 @@ async def on_run(callback: CallbackQuery, callback_data: EditCb,
 # ---------- обработка и отправка ----------
 
 async def _send(bot: Bot, status: Message, s: EditSession, r: RenderResult, o: EditOptions,
-                settings: Settings) -> None:
+                settings: Settings, with_full_text: bool = True) -> None:
+    """Видео с названием и описанием оригинала, внизу — что изменено.
+
+    Не влезшее в подпись приходит следом сообщением (в пакете из 3 файлов — один раз).
+    """
     chat_id = s.source.chat_id or status.chat.id
-    caption = result_caption(r, o)
+    text = original_text(s.video.title, s.video.description) if s.video else ""
+    caption, extra = build_caption(text, footer=result_caption(r, o))
+    if not with_full_text:
+        extra = []
     await bot.send_chat_action(chat_id, ChatAction.UPLOAD_VIDEO)
     if r.size <= settings.max_file_bytes:
-        await bot.send_video(
+        sent = await bot.send_video(
             chat_id, FSInputFile(r.path, filename=f"{o.platform}.mp4"), caption=caption,
             duration=int(r.duration), width=r.width, height=r.height, supports_streaming=True,
             reply_parameters=(ReplyParameters(message_id=s.source.message_id,
                                               allow_sending_without_reply=True)
                               if s.source.message_id else None),
         )
+        await send_extra(bot, chat_id, sent.message_id, extra)
         return
 
     # Больше 50 МБ — через MTProto (до 2 ГБ)
@@ -252,12 +261,13 @@ async def _send(bot: Bot, status: Message, s: EditSession, r: RenderResult, o: E
 
     thumb = await make_thumbnail(r.path, r.duration)
     try:
-        await mtproto.send_video(chat_id, s.source.message_id, r.path, caption=caption,
-                                 duration=r.duration, width=r.width, height=r.height,
-                                 thumb=thumb, progress=progress)
+        sent_id = await mtproto.send_video(chat_id, s.source.message_id, r.path, caption=caption or "",
+                                           duration=r.duration, width=r.width, height=r.height,
+                                           thumb=thumb, progress=progress)
     finally:
         if thumb:
             thumb.unlink(missing_ok=True)
+    await send_extra(bot, chat_id, sent_id, extra)
 
 
 async def _start(callback: CallbackQuery, s: EditSession, settings: Settings, cache: VideoCache,
@@ -315,7 +325,7 @@ async def _run(bot: Bot, status: Message, user_id: int, s: EditSession, settings
                                               variation=variations[i])
                     try:
                         await _edit(status, f"📤 Отправляю {label}…")
-                        await _send(bot, status, s, result, opts, settings)
+                        await _send(bot, status, s, result, opts, settings, with_full_text=i == 0)
                     finally:
                         result.path.unlink(missing_ok=True)
                     results.append((result, opts))

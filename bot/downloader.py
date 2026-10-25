@@ -30,6 +30,7 @@ class VideoFile:
     width: int | None
     height: int | None
     workdir: Path
+    description: str = ""   # описание оригинала: YouTube description, текст поста Instagram
 
     def cleanup(self) -> None:
         shutil.rmtree(self.workdir, ignore_errors=True)
@@ -57,7 +58,9 @@ def _humanize(err: Exception) -> str:
     msg = str(err).lower()
     if any(k in msg for k in ("ssl", "eof occurred", "connection reset", "timed out",
                               "unable to connect", "proxy", "network is unreachable",
-                              "connection refused", "failed to establish")):
+                              "connection refused", "failed to establish",
+                              # разрыв соединения провайдером: ConnectionResetError / WinError 10054
+                              "connection aborted", "connectionreseterror", "10054")):
         return ("🌐 Сайт недоступен из вашей сети — похоже, он заблокирован.\n"
                 "Включите VPN или укажите PROXY в .env (см. README).")
     if any(k in msg for k in ("private", "login", "log in", "sign in", "cookies", "not a bot")):
@@ -201,6 +204,7 @@ async def download_video(url: str, *, max_bytes: int, base_dir: Path,
                 width=info.get("width"),
                 height=info.get("height"),
                 workdir=workdir,
+                description=(info.get("description") or "").strip(),
             )
         mb = max_bytes // (1024 * 1024)
         raise DownloadFailed(f"📦 Видео больше {mb} МБ даже в {heights[-1]}p — Telegram не даст его отправить.")

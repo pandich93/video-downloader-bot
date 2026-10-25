@@ -21,6 +21,9 @@ into ready-to-post **9:16 clips for TikTok, Reels and Shorts** — with FFmpeg, 
 ## Features
 
 - **Link → video.** Send a link and choose **📥 Original** or **✂️ Edit**.
+- **Original title and description in the caption** — for both the original and the edited video
+  (YouTube title + description, TikTok caption with hashtags, Instagram post text), passed through as is.
+  Text that does not fit Telegram's 1024-character caption follows as a separate message.
 - **Fits Telegram's limits.** yt-dlp checks format sizes first and downloads the best quality that fits
   into 50 MB (720p → 480p → 360p), H.264 preferred so videos play right in the chat.
 - **Instant repeats.** Delivered videos are cached by Telegram `file_id`: the same video sent again
