@@ -33,7 +33,9 @@ SETTINGS_TEXT = (
     "• Ник — NICK из .env, сверху слева. Прогресс — полоса цвета BRAND_COLOR внизу.\n"
     "• Логотип — файл assets/logo.png в папке бота, правый верхний угол.\n"
     "• Вариация: лёгкий случайный зум и цвет — каждый экспорт немного отличается; "
-    "«слабая» — вдвое мягче, файлы пакета «Все 3» всегда разные."
+    "«слабая» — вдвое мягче, файлы пакета «Все 3» всегда разные.\n"
+    "• ✍️ Тексты ИИ (если подключён OpenRouter): своё название, описание и хэштеги "
+    "для каждой платформы по тексту оригинала."
 )
 FRAGMENT_PROMPT = (
     "✂️ Пришлите фрагмент сообщением:\n"
@@ -79,7 +81,7 @@ def menu_kb(s: EditSession) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def settings_kb(s: EditSession) -> InlineKeyboardMarkup:
+def settings_kb(s: EditSession, ai_available: bool = False) -> InlineKeyboardMarkup:
     o = s.options
     h = o.hook.replace("*", "")
     hook = f"«{h[:18]}…»" if len(h) > 18 else (f"«{h}»" if h else "нет")
@@ -97,6 +99,8 @@ def settings_kb(s: EditSession) -> InlineKeyboardMarkup:
         ("toggle", "var", f"Вариация: {VARIATIONS[o.variation]}"),
         ("toggle", "audio", f"Звук: {AUDIOS[o.audio]}"),
     ]
+    if ai_available:
+        rows.append(("toggle", "ai", f"✍️ Тексты ИИ: {'вкл' if o.ai_text else 'выкл'}"))
     kb = InlineKeyboardBuilder()
     for op, field, text in rows:
         kb.button(text=text, callback_data=EditCb(op=op, key=s.key, val=field))

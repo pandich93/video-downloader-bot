@@ -10,7 +10,7 @@ from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.types import (CallbackQuery, FSInputFile, InlineKeyboardMarkup, Message,
                            ReplyParameters)
 
-from bot import mtproto
+from bot import llm, mtproto
 from bot.cache import VideoCache
 from bot.captions import build_caption, original_text
 from bot.config import Settings
@@ -57,6 +57,10 @@ def _file_limit(settings: Settings, users: Users, uid: int) -> int:
     if users.is_admin(uid):
         return mtproto.MAX_BYTES
     return min(mtproto.MAX_BYTES, settings.public_max_file_mb * 1024 * 1024)
+
+
+def _ai_available(settings: Settings, users: Users, uid: int) -> bool:
+    return llm.can_use(settings, users.is_admin(uid), uid)
 
 
 def _mb(n: int) -> str:
@@ -123,7 +127,8 @@ async def on_text_input(message: Message, settings: Settings, cache: VideoCache,
         await _run(message.bot, panel, message.from_user.id, s, settings, cache, users, run_platforms)
         return
     await _edit(panel, "⚙️ Настройки обновлены ↓")
-    await message.reply(SETTINGS_TEXT, reply_markup=settings_kb(s))
+    await message.reply(SETTINGS_TEXT, reply_markup=settings_kb(
+        s, _ai_available(settings, users, message.from_user.id)))
 
 
 # ---------- кнопки ----------
@@ -149,15 +154,18 @@ async def on_menu(callback: CallbackQuery, callback_data: EditCb) -> None:
 
 
 @router.callback_query(EditCb.filter(F.op == "settings"))
-async def on_settings(callback: CallbackQuery, callback_data: EditCb) -> None:
+async def on_settings(callback: CallbackQuery, callback_data: EditCb, settings: Settings,
+                      users: Users) -> None:
     _pending.pop(callback.from_user.id, None)
     if s := await _session(callback, callback_data):
         await callback.answer()
-        await _edit(callback.message, SETTINGS_TEXT, settings_kb(s))
+        await _edit(callback.message, SETTINGS_TEXT,
+                    settings_kb(s, _ai_available(settings, users, callback.from_user.id)))
 
 
 @router.callback_query(EditCb.filter(F.op == "toggle"))
-async def on_toggle(callback: CallbackQuery, callback_data: EditCb, settings: Settings) -> None:
+async def on_toggle(callback: CallbackQuery, callback_data: EditCb, settings: Settings,
+                    users: Users) -> None:
     if s := await _session(callback, callback_data):
         if callback_data.val == "logo" and not s.options.logo and not LOGO_PATH.is_file():
             await callback.answer("Положите PNG-логотип в папку бота: assets/logo.png", show_alert=True)
@@ -167,7 +175,8 @@ async def on_toggle(callback: CallbackQuery, callback_data: EditCb, settings: Se
             return
         await callback.answer()
         s.options = toggle(s.options, callback_data.val)
-        await _edit(callback.message, SETTINGS_TEXT, settings_kb(s))
+        await _edit(callback.message, SETTINGS_TEXT,
+                    settings_kb(s, _ai_available(settings, users, callback.from_user.id)))
 
 
 @router.callback_query(EditCb.filter(F.op == "ask"))
@@ -233,14 +242,19 @@ async def on_run(callback: CallbackQuery, callback_data: EditCb,
 # ---------- обработка и отправка ----------
 
 async def _send(bot: Bot, status: Message, s: EditSession, r: RenderResult, o: EditOptions,
-                settings: Settings, with_full_text: bool = True) -> None:
-    """Видео с названием и описанием оригинала, внизу — что изменено.
+                settings: Settings, with_full_text: bool = True,
+                ai: llm.PlatformText | None = None) -> None:
+    """Видео с названием и описанием (текст ИИ под платформу или оригинал), внизу — что изменено.
 
-    Не влезшее в подпись приходит следом сообщением (в пакете из 3 файлов — один раз).
+    Не влезшее в подпись приходит следом сообщением (текст оригинала в пакете из 3 файлов — один раз).
     """
     chat_id = s.source.chat_id or status.chat.id
-    text = original_text(s.video.title, s.video.description) if s.video else ""
-    caption, extra = build_caption(text, footer=result_caption(r, o))
+    if ai:
+        text, footer = ai.render(), result_caption(r, o) + "\n✍️ ИИ"
+    else:
+        text = original_text(s.video.title, s.video.description) if s.video else ""
+        footer = result_caption(r, o)
+    caption, extra = build_caption(text, footer=footer)
     if not with_full_text:
         extra = []
     await bot.send_chat_action(chat_id, ChatAction.UPLOAD_VIDEO)
@@ -304,6 +318,14 @@ async def _run(bot: Bot, status: Message, user_id: int, s: EditSession, settings
                         await _edit(status, "⏳ Скачиваю исходник…")
                         s.video = await fetch(bot, s.source, settings, cache, dl_progress)
 
+                # тексты ИИ — одним запросом для всех платформ; не вышло — подпись из оригинала
+                texts: dict[str, llm.PlatformText] | None = None
+                original = original_text(s.video.title, s.video.description)
+                if s.options.ai_text and original and _ai_available(settings, users, user_id):
+                    await _edit(status, "✍️ Пишу тексты для публикации…")
+                    texts = await llm.generate(settings.openrouter_api_key, settings.openrouter_models,
+                                               original, platforms)
+
                 # вариации пакета выбираются заранее — так файлы гарантированно отличаются друг от друга
                 variations = (random_variations(len(platforms), s.options.variation)
                               if s.options.variation != "off" else [None] * len(platforms))
@@ -325,7 +347,9 @@ async def _run(bot: Bot, status: Message, user_id: int, s: EditSession, settings
                                               variation=variations[i])
                     try:
                         await _edit(status, f"📤 Отправляю {label}…")
-                        await _send(bot, status, s, result, opts, settings, with_full_text=i == 0)
+                        ai = texts.get(pid) if texts else None
+                        await _send(bot, status, s, result, opts, settings,
+                                    with_full_text=i == 0 or ai is not None, ai=ai)
                     finally:
                         result.path.unlink(missing_ok=True)
                     results.append((result, opts))

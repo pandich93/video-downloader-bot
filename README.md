@@ -24,6 +24,11 @@ into ready-to-post **9:16 clips for TikTok, Reels and Shorts** — with FFmpeg, 
 - **Original title and description in the caption** — for both the original and the edited video
   (YouTube title + description, TikTok caption with hashtags, Instagram post text), passed through as is.
   Text that does not fit Telegram's 1024-character caption follows as a separate message.
+- **✍️ AI texts per platform (optional).** With an [OpenRouter](https://openrouter.ai) key the editor writes its own
+  title, description and hashtags for TikTok, Reels and Shorts from the original text — different for each
+  platform, within each platform's limits. Free models only (`:free`, others are skipped); if the listed
+  models fail, up to 5 current free models are picked from OpenRouter's public catalog; if that fails
+  too, the original text is used.
 - **Fits Telegram's limits.** yt-dlp checks format sizes first and downloads the best quality that fits
   into 50 MB (720p → 480p → 360p), H.264 preferred so videos play right in the chat.
 - **Instant repeats.** Delivered videos are cached by Telegram `file_id`: the same video sent again
@@ -99,6 +104,9 @@ All settings live in `.env` (see [.env.example](.env.example)). Changing `.env` 
 | `API_ID`, `API_HASH` | — | From [my.telegram.org](https://my.telegram.org) — enables files up to 2 GB |
 | `VIDEO_ENCODER` | `auto` | `auto` / `qsv` / `cpu` |
 | `BRAND_COLOR`, `NICK` | `#FF4D00`, — | Progress bar color and nickname for the 🟣 level |
+| `OPENROUTER_API_KEY` | — | Enables ✍️ AI texts ([openrouter.ai/keys](https://openrouter.ai/keys)) |
+| `OPENROUTER_MODELS` | built-in list | Free models (`…:free`), comma-separated, tried in order |
+| `LLM_PUBLIC` | `false` | Public mode: AI texts for everyone, not only the admin and `ALLOWED_USER_IDS` |
 | `DOWNLOAD_DIR`, `MAX_FILE_MB` | `downloads`, `50` | Temp folder (**cleared on start**) and Bot API size limit |
 | `AUTO_UPDATE`, `UPDATE_INTERVAL_HOURS` | `true`, `24` | yt-dlp self-update |
 | `NOTIFY_ON_START`, `NOTIFY_NEW_USERS` | `true` | Admin notifications |
