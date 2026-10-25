@@ -27,6 +27,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 - `.env.example` no longer contains a real nickname.
 
 ### Fixed
+- A connection reset by the provider (`ConnectionResetError`, WinError 10054) is now treated as a blocked
+  site: the user gets the "enable VPN or PROXY" hint and the admin no longer gets an error notification.
 - Captions of files sent through MTProto are no longer parsed as Markdown, so `**` and `__` from the
   original text stay as they are.
 - "As in the original" frame with variation: the zoom no longer shrinks the video (e.g. 1920×1080 → 1850×1040),
