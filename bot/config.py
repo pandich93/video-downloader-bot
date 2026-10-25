@@ -53,10 +53,17 @@ class Settings:
     public_max_file_mb: int = 500     # своё видео файлом для обычных пользователей (админу — до 2 ГБ)
     notify_new_users: bool = True     # сообщать админу о новых пользователях
     public_mode: bool = False         # PUBLIC_MODE=true — бот открыт для всех
+    openrouter_api_key: str = ""      # тексты ИИ для публикации (openrouter.ai/keys)
+    openrouter_models: tuple[str, ...] = ()   # бесплатные модели по порядку; пусто — список из bot/llm.py
+    llm_public: bool = False          # тексты ИИ всем в публичном режиме (иначе — админ и ALLOWED_USER_IDS)
 
     @property
     def is_public(self) -> bool:
         return self.public_mode
+
+    @property
+    def llm_enabled(self) -> bool:
+        return bool(self.openrouter_api_key)
     base_dir: Path = BASE_DIR
 
     @property
@@ -160,4 +167,7 @@ def load_settings() -> Settings:
         public_max_file_mb=int(os.getenv("PUBLIC_MAX_FILE_MB", "500").strip() or 500),
         notify_new_users=_flag("NOTIFY_NEW_USERS", True),
         public_mode=public_mode,
+        openrouter_api_key=os.getenv("OPENROUTER_API_KEY", "").strip(),
+        openrouter_models=tuple(m.strip() for m in os.getenv("OPENROUTER_MODELS", "").split(",") if m.strip()),
+        llm_public=_flag("LLM_PUBLIC", False),
     )

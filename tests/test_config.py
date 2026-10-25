@@ -143,3 +143,15 @@ def test_public_mode_still_respects_bans(env, tmp_path):
     access = _access(load_settings(), tmp_path)
     assert not access._allowed(999)
     assert access._allowed(1000)
+
+
+def test_openrouter_settings(env, tmp_path):
+    settings = load_settings()
+    assert not settings.llm_enabled and settings.openrouter_models == () and not settings.llm_public
+    env.setenv("OPENROUTER_API_KEY", " sk-or-test ")
+    env.setenv("OPENROUTER_MODELS", "a/b:free, c/d:free ,,")
+    env.setenv("LLM_PUBLIC", "true")
+    settings = load_settings()
+    assert settings.llm_enabled and settings.openrouter_api_key == "sk-or-test"
+    assert settings.openrouter_models == ("a/b:free", "c/d:free")
+    assert settings.llm_public

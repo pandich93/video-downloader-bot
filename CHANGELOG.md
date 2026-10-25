@@ -16,6 +16,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   (above the "Изменено: …" line). Text longer than the 1024-character caption is shortened with "…"
   and sent in full as the next message (once per **📦 All 3** batch). The description is also kept in
   the `file_id` cache; `cache.db` from earlier versions is migrated in place, no records are lost.
+- ✍️ AI texts in the editor (optional, `OPENROUTER_API_KEY`): its own title, description and hashtags for
+  TikTok, Reels and Shorts from the original text, different for each platform and within its limits.
+  Free OpenRouter models only (`OPENROUTER_MODELS`, tried in order; models without `:free` are skipped;
+  if none answers, up to 5 current free models come from the public catalog); one request per run, even for
+  **📦 All 3**. On any failure — the original text and a warning in the log. In public mode AI texts are
+  for the admin and `ALLOWED_USER_IDS` unless `LLM_PUBLIC=true`.
 
 ### Changed
 - **📦 All 3** picks the three variations together: every parameter falls into its own third of the

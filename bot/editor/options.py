@@ -56,6 +56,7 @@ class EditOptions:
     fade_in: bool = False       # мягкое появление из чёрного в начале
     nick: bool = False          # ник (NICK из .env) на плашке сверху слева
     progress: bool = False      # полоса прогресса фирменного цвета внизу
+    ai_text: bool = True        # тексты ИИ под платформу (работает, только если задан OPENROUTER_API_KEY)
 
     @property
     def platform_name(self) -> str:
@@ -108,6 +109,8 @@ def toggle(opts: EditOptions, field: str) -> EditOptions:
         return replace(opts, nick=not opts.nick)
     if field == "progress":
         return replace(opts, progress=not opts.progress)
+    if field == "ai":
+        return replace(opts, ai_text=not opts.ai_text)
     raise ValueError(field)
 
 
